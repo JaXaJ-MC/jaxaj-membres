@@ -13,6 +13,8 @@ begin
    where id = v_mere;
   perform annuaire.creer_organisation('JaXaJ MC Béarn', 'association_jaxaj', v_mere);
   perform annuaire.creer_organisation('JaXaJ MC Euskadi', 'association_jaxaj', v_mere);  -- en création
+  -- Volet événementiel, séparé du club : reçoit les adhésions « adhérent événement ».
+  perform annuaire.creer_organisation('JaXaJ Productions', 'association_jaxaj');
 end
 $$;
 
@@ -23,7 +25,7 @@ insert into adhesion.categorie (code, libelle, membre_club, ordre) values
   ('observateur',  'Observateur',                         true,  20),
   ('suiveur',      'Suiveur',                             true,  30),
   ('support',      'Support (validé par le club)',        true,  40),
-  ('public',       'Public (adhérent aux événements)',   false, 50),
+  ('public',       'Adhérent événement',                  false, 50),
   ('association',  'Association de chapitre',             false, 60);  -- membres de la mère
 
 -- ---------------------------------------------------------------- tarifs

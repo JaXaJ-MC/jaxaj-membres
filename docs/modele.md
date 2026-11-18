@@ -50,7 +50,7 @@ erDiagram
 
 ### Schéma `adhesion`
 
-- `categorie` : full patch, observateur, suiveur, support (membres du club), public (adhérent aux événements), association (membre de la mère).
+- `categorie` : full patch, observateur, suiveur, support (membres du club), adhérent événement (code `public`), association (membre de la mère).
 - `tarif` : montant par catégorie et périodicité (mensuelle, annuelle, ponctuelle), sur une période de validité, avec la décision qui l'a fixé. Sans association, le tarif vaut pour tous les chapitres ; un tarif propre à une association l'emporte. Les tarifs de 2026 sont repris pour 2027 en attendant l'AG de janvier.
 - `adhesion` : tel membre, à telle association, dans telle catégorie, sur telle période, éventuellement au titre d'un club ou d'une association. Passer de suiveur à full patch, c'est clore une adhésion et en ouvrir une autre.
 - `cotisation` : ce qui est dû pour une période (un mois, une année, un événement), au montant du tarif applicable, ou gratuite.
@@ -85,12 +85,13 @@ Le script `reprise/reprise_free.py` produit le SQL de reprise et un rapport, à 
 ## Décisions (18/11/2026)
 
 - Association mère : JaXaJ MC.
-- Deux catégories distinctes : `support`, membre du club validé par lui, et `public`, personne qui a seulement adhéré pour entrer à un événement. L'ancienne base appelait ce public « Support » : il est repris en `public`. Le libellé affiché de `public` reste à choisir.
+- Deux catégories distinctes : `support`, membre du club validé par lui, et `public` (libellé « Adhérent événement »), personne qui a seulement adhéré pour entrer à un événement. L'ancienne base appelait ce public « Support » : il est repris en `public`.
+- Quatrième association, JaXaJ Productions : elle porte le volet événementiel, séparé du club, et reçoit les adhésions « Adhérent événement ». Les adhésions reprises de 2009-2020 restent rattachées à l'association mère, qui organisait les concerts à l'époque.
 - Pas de formule annuelle pour les membres du club pour l'instant : cotisations mensuelles.
 - Les reversements des chapitres à la mère et les statistiques relèveront d'une appli de suivi plus tard. Le modèle garde ce qu'il faut pour les calculer : chaque cotisation, son tarif, chaque paiement et l'association qui l'a encaissé.
 
 ## Questions ouvertes
 
-- Libellé de la catégorie `public` (« Public », « Adhérent événement », « Visiteur »…).
+- JaXaJ Productions a-t-elle un lien statutaire avec la mère (membre, filiale) ? Pour l'instant, aucun n'est modélisé.
 - Montants 2026 à confirmer.
 - Qui se connecte, et à quoi : le bureau de chaque chapitre, les personnes à l'entrée, les membres pour leur fiche. C'est la brique suivante (comptes et droits), qui servira à toutes les applis.
