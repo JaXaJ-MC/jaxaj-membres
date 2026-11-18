@@ -7,4 +7,6 @@ Annuaire, adhésions, cotisations et contrôle d'accès du club JaXaJ MC. Premi�
 - `sql/02_reference.sql` : associations JaXaJ, catégories de membre, tarifs.
 - `reprise/reprise_free.py` : reprise de l'ancienne base MySQL (Free, 2009-2020). Usage : `reprise_free.py <export.sql> <dossier de sortie>` ; la sortie contient des données personnelles et ne doit jamais être versionnée.
 
+- `api/` : l'API (Symfony 7.4 LTS, API Platform, Doctrine), PHP 8.4. Le schéma SQL reste la référence : Doctrine lit les tables, il ne les crée pas.
+
 Pour créer une base de test : `createdb jaxaj && psql -d jaxaj -f sql/01_schema.sql -f sql/02_reference.sql`.
