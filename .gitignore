@@ -1,0 +1,6 @@
+# Données personnelles : jamais dans le dépôt
+*.csv
+sources/
+sortie/
+__pycache__/
+.DS_Store
