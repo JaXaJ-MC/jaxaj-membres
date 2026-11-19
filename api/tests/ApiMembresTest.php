@@ -182,4 +182,53 @@ class ApiMembresTest extends WebTestCase
         self::assertResponseIsSuccessful();
         self::assertSame('2027-12-31', substr($close['fin'], 0, 10));
     }
+
+    public function testListeEtPaiementDuMois(): void
+    {
+        $admin = $this->jeton(['membres:admin']);
+        $bearn = $this->association('JaXaJ MC Béarn');
+        $avec = $this->envoyer('POST', '/api/personnes', ['nom' => 'Aaaa-Liste', 'prenom' => 'Avec'], $admin)['id'];
+        $sans = $this->envoyer('POST', '/api/personnes', ['nom' => 'Aaaa-Liste', 'prenom' => 'Sans'], $admin)['id'];
+        $this->envoyer('POST', '/api/adhesions', ['membre' => '/api/personnes/'.$avec, 'association' => '/api/organisations/'.$bearn,
+            'categorie' => '/api/categories/suiveur', 'debut' => '2027-01-01'], $admin);
+        self::assertResponseStatusCodeSame(201);
+
+        // Liste du mois : suiveur à payer 30 €, l'autre sans adhésion ; triée par nom, prénom.
+        $liste = $this->lire('/api/liste?mois=2027-03', $admin);
+        self::assertSame('2027-03', $liste['mois']);
+        $lignes = array_values(array_filter($liste['personnes'], fn ($p) => 'Aaaa-Liste' === $p['nom']));
+        self::assertSame(['Avec', 'Sans'], array_column($lignes, 'prenom'));
+        self::assertSame(['statut' => 'a_payer', 'du' => '30.00', 'regle' => null, 'reste' => '30.00'], $lignes[0]['mois']);
+        self::assertSame('suiveur', $lignes[0]['categorie']);
+        self::assertSame('aucune_adhesion', $lignes[1]['mois']['statut']);
+
+        // « Payé ce mois-ci » : cotisation de mars créée au tarif, paiement enregistré.
+        $ligne = $this->envoyer('POST', "/api/personnes/$avec/paiement-mois", ['mois' => '2027-03', 'moyen' => 'cheque'], $admin);
+        self::assertResponseStatusCodeSame(201);
+        self::assertSame(['statut' => 'paye', 'du' => '30.00', 'regle' => '30.00', 'reste' => '0.00'], $ligne['mois']);
+        self::assertSame('2027-03-31', $ligne['derniere_cotisation']);
+        self::assertTrue($this->lire("/api/personnes/$avec/acces?jour=2027-03-20", $admin)['acces']);
+        $cotisations = $this->lire("/api/cotisations?membre=$avec", $admin);
+        self::assertCount(1, $cotisations);
+        self::assertSame('2027-03-31', substr($cotisations[0]['fin'], 0, 10));
+
+        // Deuxième fois : refusé, rien n'est enregistré en double.
+        $refus = $this->envoyer('POST', "/api/personnes/$avec/paiement-mois", ['mois' => '2027-03'], $admin);
+        self::assertResponseStatusCodeSame(422);
+        self::assertStringContainsString('déjà réglée', $refus['detail']);
+        self::assertSame('30.00', static::getContainer()->get(Connection::class)->fetchOne(
+            'select sum(p.montant) from adhesion.paiement p where p.payeur_id = :id', ['id' => $avec]));
+
+        // Sans adhésion, moyen inconnu : refusés.
+        $this->envoyer('POST', "/api/personnes/$sans/paiement-mois", ['mois' => '2027-03'], $admin);
+        self::assertResponseStatusCodeSame(422);
+        $this->envoyer('POST', "/api/personnes/$avec/paiement-mois", ['mois' => '2027-04', 'moyen' => 'troc'], $admin);
+        self::assertResponseStatusCodeSame(400);
+
+        // L'accueil (Productions) ne peut pas encaisser une cotisation de membre du club du Béarn.
+        $accueil = $this->jeton(['membres:accueil:'.$this->association('JaXaJ Productions')]);
+        self::assertNotEmpty($this->lire('/api/liste?mois=2027-04', $accueil)['personnes']);
+        $this->envoyer('POST', "/api/personnes/$avec/paiement-mois", ['mois' => '2027-04'], $accueil);
+        self::assertResponseStatusCodeSame(403);
+    }
 }
