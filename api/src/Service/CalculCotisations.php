@@ -26,7 +26,8 @@ final class CalculCotisations
     public function __construct(private readonly Connection $base) {}
 
     /**
-     * @return array{creees: int, total: string, reglees: int, conservees: int, sans_tarif: list<string>}
+     * @return array{creees: int, total: string, reglees: int, conservees: int,
+     *               sans_tarif: list<array{association: string, categorie: string, debut: string, fin: string}>}
      */
     public function calculer(string $personne, ?\DateTimeImmutable $regleesJusquau, bool $simuler): array
     {
@@ -84,7 +85,7 @@ final class CalculCotisations
                 $finPeriode = $annuelle ? $jour->modify('last day of december') : $jour->modify('last day of this month');
                 $jour = $finPeriode->modify('+1 day');
                 if (!$tarif) {
-                    $resultat['sans_tarif'][] = $a['categorie'].' '.$debut->format('m/Y');
+                    $resultat['sans_tarif'][] = [$a['association_id'], $a['categorie'], $debut->format('Y-m')];
                     continue;
                 }
                 $deja = $b->fetchOne(
@@ -119,21 +120,20 @@ final class CalculCotisations
         return $resultat;
     }
 
-    /** « full_patch 01/2009 », « full_patch 02/2009 »… → « full_patch 01/2009 → 12/2014 ». */
+    /** Mois sans tarif regroupés en plages : même association, même catégorie, mois consécutifs. */
     private function regrouper(array $mois): array
     {
         $plages = [];
-        foreach ($mois as $m) {
-            [$categorie, $date] = explode(' ', $m);
-            $dernier = array_key_last($plages);
-            $suivant = null !== $dernier ? \DateTimeImmutable::createFromFormat('!m/Y', $plages[$dernier][2])->modify('+1 month')->format('m/Y') : null;
-            if (null !== $dernier && $plages[$dernier][0] === $categorie && $suivant === $date) {
-                $plages[$dernier][2] = $date;
+        foreach ($mois as [$association, $categorie, $m]) {
+            $d = array_key_last($plages);
+            $suivant = null !== $d ? (new \DateTimeImmutable($plages[$d]['fin'].'-01'))->modify('+1 month')->format('Y-m') : null;
+            if (null !== $d && $plages[$d]['association'] === $association && $plages[$d]['categorie'] === $categorie && $suivant === $m) {
+                $plages[$d]['fin'] = $m;
             } else {
-                $plages[] = [$categorie, $date, $date];
+                $plages[] = ['association' => $association, 'categorie' => $categorie, 'debut' => $m, 'fin' => $m];
             }
         }
 
-        return array_map(fn ($p) => $p[1] === $p[2] ? "$p[0] $p[1]" : "$p[0] $p[1] → $p[2]", $plages);
+        return $plages;
     }
 }

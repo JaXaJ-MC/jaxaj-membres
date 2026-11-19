@@ -421,7 +421,7 @@ class ApiMembresTest extends WebTestCase
         $this->envoyer('POST', '/api/adhesions', ['membre' => '/api/personnes/'.$vide, 'association' => '/api/organisations/'.$mere,
             'categorie' => '/api/categories/suiveur', 'debut' => '2016-01-01', 'fin' => '2016-03-31'], $admin);
         $r = $this->envoyer('POST', '/api/personnes/'.$vide.'/cotisations/calcul', [], $admin);
-        self::assertSame([0, ['suiveur 01/2016 → 03/2016']], [$r['creees'], $r['sans_tarif']]);
+        self::assertSame([0, [['association' => $mere, 'categorie' => 'suiveur', 'debut' => '2016-01', 'fin' => '2016-03']]], [$r['creees'], $r['sans_tarif']]);
         $this->client->request('DELETE', '/api/tarifs/'.$mensuel['id'], server: $admin);
         self::assertResponseStatusCodeSame(409);
     }
