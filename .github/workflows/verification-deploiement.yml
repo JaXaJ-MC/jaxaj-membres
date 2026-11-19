@@ -1,0 +1,52 @@
+name: Vérification et déploiement
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:   # relancer à la main depuis l'onglet Actions
+
+permissions:
+  contents: read
+
+jobs:
+  verification:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env: { POSTGRES_PASSWORD: postgres }
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env: { PGHOST: 127.0.0.1, PGPORT: 5432, PGUSER: postgres, PGPASSWORD: postgres }
+    defaults:
+      run: { working-directory: api }
+    steps:
+      - uses: actions/checkout@v7
+      - uses: shivammathur/setup-php@v2
+        with: { php-version: '8.4', extensions: 'pdo_pgsql, intl', tools: composer, coverage: none }
+      - run: composer install --no-interaction --no-progress
+      - run: echo 'DATABASE_URL="postgresql://postgres:postgres@127.0.0.1:5432/membres?serverVersion=17&charset=utf8"' > .env.test.local
+      - run: bin/preparer-tests
+      - run: php bin/phpunit
+      - name: Les migrations s'appliquent sur une base neuve
+        run: for f in ../sql/migrations/*.sql; do psql -X -q -v ON_ERROR_STOP=1 -d membres_test -f "$f"; done
+
+  # Déploiement sur la Dédibox : seulement depuis main, une fois les tests passés. La clé
+  # DEDIBOX_CLE ne peut lancer que jaxaj-deployer (commande forcée côté serveur) ; DEDIBOX_HOTE
+  # est l'empreinte du serveur, vérifiée avant toute connexion.
+  deploiement:
+    needs: verification
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    concurrency: { group: deploiement-membres, cancel-in-progress: false }
+    steps:
+      - name: Déployer sur la Dédibox
+        env:
+          CLE: ${{ secrets.DEDIBOX_CLE }}
+          HOTE: ${{ secrets.DEDIBOX_HOTE }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$CLE" > ~/.ssh/deploiement && chmod 600 ~/.ssh/deploiement
+          printf '%s\n' "$HOTE" > ~/.ssh/known_hosts
+          ssh -i ~/.ssh/deploiement -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes jaxaj@51.159.2.167 membres
