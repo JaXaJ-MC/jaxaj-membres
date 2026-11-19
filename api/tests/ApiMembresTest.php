@@ -361,4 +361,68 @@ class ApiMembresTest extends WebTestCase
         $role = $this->envoyer('PATCH', '/api/roles/'.$role['id'], ['debut' => '2012-01-01', 'fin' => '2013-12-31'], $gestion);
         self::assertSame(['2012-01-01', '2013-12-31'], [substr($role['debut'], 0, 10), substr($role['fin'], 0, 10)]);
     }
+
+    /** Tarifs saisis par l'administration, puis calcul des cotisations d'une personne. */
+    public function testTarifsEtCalculDesCotisations(): void
+    {
+        $admin = $this->jeton(['membres:admin']);
+        $gestion = $this->jeton(['membres:gestion']);
+        $mere = $this->association('JaXaJ MC');
+        $bearn = $this->association('JaXaJ MC Béarn');
+        $base = static::getContainer()->get(Connection::class);
+
+        // Tarifs historiques : 50 € l'année jusqu'en 2014, puis 50 € le mois.
+        $annuel = ['categorie' => '/api/categories/full_patch', 'periodicite' => 'annuelle', 'montant' => '50', 'debut' => '2009-01-01', 'fin' => '2014-12-31'];
+        $this->envoyer('POST', '/api/tarifs', $annuel, $gestion);
+        self::assertResponseStatusCodeSame(403);
+        $this->envoyer('POST', '/api/tarifs', $annuel + ['decision' => 'AG de 2009'], $admin);
+        self::assertResponseStatusCodeSame(201);
+        $mensuel = $this->envoyer('POST', '/api/tarifs', ['periodicite' => 'mensuelle', 'debut' => '2015-01-01', 'fin' => '2025-12-31'] + $annuel, $admin);
+        self::assertResponseStatusCodeSame(201);
+        $this->envoyer('POST', '/api/tarifs', ['periodicite' => 'mensuelle', 'debut' => '2025-06-01', 'fin' => null] + $annuel, $admin);
+        self::assertResponseStatusCodeSame(409);  // chevauche le tarif mensuel en vigueur
+
+        $id = $this->envoyer('POST', '/api/personnes', ['nom' => 'Harriet', 'prenom' => 'Luc'], $admin)['id'];
+        $p = ['membre' => '/api/personnes/'.$id, 'categorie' => '/api/categories/full_patch'];
+        $this->envoyer('POST', '/api/adhesions', $p + ['association' => '/api/organisations/'.$mere, 'debut' => '2013-10-17', 'fin' => '2025-12-31'], $admin);
+        $this->envoyer('POST', '/api/adhesions', $p + ['association' => '/api/organisations/'.$bearn, 'debut' => '2026-01-01'], $admin);
+        $moisCourant = (int) date('n') + 12 * ((int) date('Y') - 2026);  // 2026 et 2027 : 60 € le mois
+
+        // Réservé à l'administration ; l'aperçu n'enregistre rien.
+        $this->envoyer('POST', '/api/personnes/'.$id.'/cotisations/calcul', ['simuler' => true], $gestion);
+        self::assertResponseStatusCodeSame(403);
+        $apercu = $this->envoyer('POST', '/api/personnes/'.$id.'/cotisations/calcul', ['regleesJusquau' => '2025-12-31', 'simuler' => true], $admin);
+        self::assertSame(2 + 132 + $moisCourant, $apercu['creees']);
+        self::assertSame(134, $apercu['reglees']);
+        self::assertSame(number_format(100 + 6600 + 60 * $moisCourant, 2, '.', ''), $apercu['total']);
+        self::assertSame([], $this->lire('/api/personnes/'.$id.'/cotisations', $admin));
+
+        $this->envoyer('POST', '/api/personnes/'.$id.'/cotisations/calcul', ['regleesJusquau' => '2025-12-31'], $admin);
+        $etat = $this->lire('/api/personnes/'.$id.'/cotisations', $admin);
+        self::assertCount(2 + 132 + $moisCourant, $etat);
+        $annee2013 = array_values(array_filter($etat, fn ($c) => '2013-01-01' === $c['debut']))[0];
+        self::assertSame(['2013-12-31', '50.00', true, true], [$annee2013['fin'], $annee2013['montant'], $annee2013['aJour'], $annee2013['historique']]);
+        self::assertFalse($etat[0]['aJour']);  // le mois en cours reste à payer
+
+        // Un vrai paiement est conservé quand on recalcule après avoir corrigé un tarif.
+        $this->envoyer('POST', '/api/personnes/'.$id.'/paiement-mois', ['mois' => date('Y-m'), 'moyen' => 'especes'], $admin);
+        self::assertResponseStatusCodeSame(201);
+        $this->envoyer('PATCH', '/api/tarifs/'.$mensuel['id'], ['montant' => '55'], $admin);
+        $recalcul = $this->envoyer('POST', '/api/personnes/'.$id.'/cotisations/calcul', ['regleesJusquau' => '2025-12-31'], $admin);
+        self::assertSame(1, $recalcul['conservees']);
+        $etat = $this->lire('/api/personnes/'.$id.'/cotisations', $admin);
+        self::assertTrue($etat[0]['aJour']);
+        self::assertFalse($etat[0]['calculee'] && $etat[0]['historique']);
+        self::assertSame('55.00', array_values(array_filter($etat, fn ($c) => '2015-03-01' === $c['debut']))[0]['montant']);
+        self::assertSame(134, (int) $base->fetchOne("select count(*) from adhesion.paiement where payeur_id = :p and reference = 'Historique reconstitué'", ['p' => $id]));
+
+        // Sans tarif : signalé, rien de créé. Un tarif qui a servi ne se supprime pas.
+        $vide = $this->envoyer('POST', '/api/personnes', ['nom' => 'Sans', 'prenom' => 'Tarif'], $admin)['id'];
+        $this->envoyer('POST', '/api/adhesions', ['membre' => '/api/personnes/'.$vide, 'association' => '/api/organisations/'.$mere,
+            'categorie' => '/api/categories/suiveur', 'debut' => '2016-01-01', 'fin' => '2016-03-31'], $admin);
+        $r = $this->envoyer('POST', '/api/personnes/'.$vide.'/cotisations/calcul', [], $admin);
+        self::assertSame([0, ['suiveur 01/2016 → 03/2016']], [$r['creees'], $r['sans_tarif']]);
+        $this->client->request('DELETE', '/api/tarifs/'.$mensuel['id'], server: $admin);
+        self::assertResponseStatusCodeSame(409);
+    }
 }

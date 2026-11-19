@@ -173,6 +173,7 @@ create table adhesion.cotisation (
   tarif_id       uuid references adhesion.tarif (id),
   gratuite       boolean not null default false,
   motif_gratuite text,
+  calculee       boolean not null default false,  -- créée par « Calculer les cotisations », recalculable
   cree_le        timestamptz not null default now(),
   check (not gratuite or montant = 0),
   check (not isempty(periode)),
