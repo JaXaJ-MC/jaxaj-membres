@@ -1,0 +1,11 @@
+# L'API membres ne délivre pas de jetons : elle vérifie ceux de l'appli comptes avec sa clé
+# publique (RS256), sans l'appeler.
+lexik_jwt_authentication:
+    public_key: '%env(resolve:JWT_PUBLIC_KEY)%'
+
+# En test, une paire de clés propre aux tests permet de fabriquer des jetons.
+when@test:
+    lexik_jwt_authentication:
+        secret_key: '%kernel.project_dir%/config/jwt/test-private.pem'
+        public_key: '%kernel.project_dir%/config/jwt/test-public.pem'
+        pass_phrase: 'test'

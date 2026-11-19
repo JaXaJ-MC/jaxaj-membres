@@ -1,0 +1,13 @@
+#!/bin/bash
+# Prépare l'environnement de test : clés JWT de test et base membres_test.
+# La connexion PostgreSQL vient des variables PGHOST, PGPORT, PGUSER (et PGPASSWORD).
+#   PGHOST=127.0.0.1 PGPORT=5432 PGUSER=postgres bin/preparer-tests
+set -euo pipefail
+cd "$(dirname "$0")/.."
+APP_ENV=test php bin/console lexik:jwt:generate-keypair --skip-if-exists -q
+dropdb --if-exists membres_test
+createdb membres_test
+for f in ../sql/01_schema.sql ../sql/02_reference.sql; do
+  psql -X -q -v ON_ERROR_STOP=1 -d membres_test -f "$f" >/dev/null
+done
+echo "Base membres_test prête."

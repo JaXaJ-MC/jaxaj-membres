@@ -11,9 +11,16 @@
 --   - les tables portent cree_le et modifie_le.
 
 create extension if not exists btree_gist;  -- contraintes d'exclusion sur (uuid, daterange)
+create extension if not exists unaccent;    -- recherche sans accents
 
 create schema annuaire;
 create schema adhesion;
+
+-- Texte normalisé pour la recherche : minuscules, sans accents (« José » → « jose »).
+create function annuaire.normaliser(t text) returns text
+language sql immutable parallel safe as $$
+  select lower(public.unaccent('public.unaccent'::regdictionary, coalesce(t, '')))
+$$;
 
 create function annuaire.maj_modifie_le() returns trigger
 language plpgsql as $$
@@ -37,20 +44,22 @@ create table annuaire.entite (
 );
 
 create table annuaire.personne (
-  id             uuid primary key,
+  id             uuid primary key default gen_random_uuid(),
   nature         text not null default 'physique' check (nature = 'physique'),
   nom            text not null,
   prenom         text,
   surnom         text,  -- nom de route
   date_naissance date,
   commentaire    text,
+  recherche      text generated always as (annuaire.normaliser(
+                   nom || ' ' || coalesce(prenom, '') || ' ' || coalesce(surnom, ''))) stored,
   cree_le        timestamptz not null default now(),
   modifie_le     timestamptz not null default now(),
   foreign key (id, nature) references annuaire.entite (id, nature) on delete cascade
 );
 
 create table annuaire.organisation (
-  id          uuid primary key,
+  id          uuid primary key default gen_random_uuid(),
   nature      text not null default 'morale' check (nature = 'morale'),
   nom         text not null,
   sigle       text,
@@ -188,6 +197,23 @@ create table adhesion.reglement (
   montant       numeric(8, 2) not null check (montant > 0),
   primary key (paiement_id, cotisation_id)
 );
+
+-- ---------------------------------------------------------------- entité créée d'office
+
+-- Insérer une personne ou une organisation crée sa ligne dans annuaire.entite : une appli
+-- n'a pas à s'en soucier.
+create function annuaire.creer_entite() returns trigger
+language plpgsql as $$
+begin
+  insert into annuaire.entite (id, nature) values (new.id, new.nature) on conflict (id) do nothing;
+  return new;
+end
+$$;
+
+create trigger entite before insert on annuaire.personne
+  for each row execute function annuaire.creer_entite();
+create trigger entite before insert on annuaire.organisation
+  for each row execute function annuaire.creer_entite();
 
 -- ---------------------------------------------------------------- dates de modification
 

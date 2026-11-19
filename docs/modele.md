@@ -44,7 +44,7 @@ erDiagram
 ### Schéma `annuaire`
 
 - `entite` : toute personne, physique ou morale. Les adhésions et les coordonnées pointent ici, ce qui permet à une association d'être membre d'une autre : les chapitres Béarn et Euskadi sont les deux membres de l'association mère.
-- `personne` et `organisation` : les détails propres à chaque nature. Une organisation a un genre (`association_jaxaj`, `club_moto`, `association`…) et éventuellement une association mère.
+- `personne` et `organisation` : les détails propres à chaque nature. Insérer une personne ou une organisation crée sa ligne dans `entite` (déclencheur). La colonne `personne.recherche`, calculée par PostgreSQL, contient nom, prénom et surnom sans accents ni majuscules, pour la recherche. Une organisation a un genre (`association_jaxaj`, `club_moto`, `association`…) et éventuellement une association mère.
 - `adresse` et `contact` : plusieurs par entité, une principale par type. Le code postal est un texte et le pays un code ISO à deux lettres.
 - `representation` : qui représente quelle organisation, à quel titre et quand. Le président de chaque chapitre (qui le représente auprès de la mère), le trésorier, ou une personne venue sous l'égide de son club ou de son association moto.
 

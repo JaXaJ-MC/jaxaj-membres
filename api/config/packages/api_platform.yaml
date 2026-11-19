@@ -1,7 +1,21 @@
 api_platform:
-    title: Hello API Platform
+    title: API membres JaXaJ MC
+    description: Annuaire, adhésions, cotisations et contrôle d'accès. Authentification par le JWT de l'appli comptes (en-tête Authorization Bearer).
     version: 1.0.0
+    formats:
+        jsonld: ['application/ld+json']
+        json: ['application/json']
+    patch_formats:
+        json: ['application/merge-patch+json']
     defaults:
         stateless: true
+        pagination_items_per_page: 30
+        pagination_client_items_per_page: true
+        pagination_maximum_items_per_page: 200
         cache_headers:
             vary: ['Content-Type', 'Authorization', 'Origin']
+    swagger:
+        api_keys:
+            JWT:
+                name: Authorization
+                type: header
