@@ -91,13 +91,16 @@ class Representation
     #[Groups(['role:lire'])]
     public function getDebut(): ?\DateTimeImmutable { return $this->periode?->debut; }
 
-    #[Groups(['role:ecrire'])]
-    public function setDebut(\DateTimeImmutable $debut): void { $this->periode = new Periode($debut, $this->periode?->fin); }
+    #[Groups(['role:ecrire', 'role:modifier'])]
+    public function setDebut(\DateTimeImmutable $debut): void { $this->periode = new Periode($debut, $this->periode?->fin, false); }
 
     /** Dernier jour du mandat, inclus ; vide tant qu'il est en cours. */
     #[Groups(['role:lire'])]
     public function getFin(): ?\DateTimeImmutable { return $this->periode?->fin; }
 
     #[Groups(['role:ecrire', 'role:modifier'])]
-    public function setFin(?\DateTimeImmutable $fin): void { $this->periode = new Periode($this->periode?->debut, $fin); }
+    public function setFin(?\DateTimeImmutable $fin): void { $this->periode = new Periode($this->periode?->debut, $fin, false); }
+
+    #[Assert\IsTrue(message: 'La date de fin précède la date de début.')]
+    public function isPeriodeCoherente(): bool { return $this->periode?->coherente() ?? true; }
 }

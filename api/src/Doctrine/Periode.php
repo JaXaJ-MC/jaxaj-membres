@@ -11,10 +11,16 @@ final class Periode
     public function __construct(
         public readonly ?\DateTimeImmutable $debut,
         public readonly ?\DateTimeImmutable $fin = null,
+        bool $controler = true,  // false : saisie en cours (début puis fin), contrôlée par la validation
     ) {
-        if ($debut && $fin && $fin < $debut) {
-            throw new \InvalidArgumentException('La fin d\'une période précède son début.');
+        if ($controler && !$this->coherente()) {
+            throw new \DomainException('La fin d\'une période précède son début.');  // 422 lisible
         }
+    }
+
+    public function coherente(): bool
+    {
+        return !$this->debut || !$this->fin || $this->fin >= $this->debut;
     }
 
     public function contient(\DateTimeImmutable $jour): bool

@@ -319,4 +319,46 @@ class ApiMembresTest extends WebTestCase
             'role' => 'representant', 'debut' => '2026-02-01'], $this->jeton(['membres:accueil']));
         self::assertResponseStatusCodeSame(403);
     }
+
+    /** Corriger l'historique : dates d'une adhésion reprise, début d'un rôle, suppression d'une saisie erronée. */
+    public function testCorrectionDeLHistorique(): void
+    {
+        $admin = $this->jeton(['membres:admin']);
+        $gestion = $this->jeton(['membres:gestion']);
+        $mere = $this->association('JaXaJ MC');
+        $id = $this->envoyer('POST', '/api/personnes', ['nom' => 'Etchart', 'prenom' => 'Paul'], $admin)['id'];
+        $base = ['membre' => '/api/personnes/'.$id, 'association' => '/api/organisations/'.$mere, 'categorie' => '/api/categories/full_patch'];
+
+        // Adhésion reprise aux dates approximatives : la nouvelle saisie la recouvre.
+        $reprise = $this->envoyer('POST', '/api/adhesions', $base + ['debut' => '2009-01-01', 'fin' => '2018-12-31'], $admin);
+        $this->envoyer('POST', '/api/adhesions', $base + ['debut' => '2009-10-17', 'fin' => '2025-12-31'], $admin);
+        self::assertResponseStatusCodeSame(409);
+
+        // On corrige ses dates, y compris en avançant le début au-delà de l'ancienne fin.
+        $corrigee = $this->envoyer('PATCH', '/api/adhesions/'.$reprise['id'], ['debut' => '2019-06-01', 'fin' => '2020-12-31'], $gestion);
+        self::assertResponseIsSuccessful();
+        self::assertSame(['2019-06-01', '2020-12-31'], [substr($corrigee['debut'], 0, 10), substr($corrigee['fin'], 0, 10)]);
+        $this->envoyer('PATCH', '/api/adhesions/'.$reprise['id'], ['fin' => '2019-01-01'], $gestion);
+        self::assertResponseStatusCodeSame(422);
+
+        // Supprimer une saisie erronée : l'administration seulement.
+        $this->client->request('DELETE', '/api/adhesions/'.$reprise['id'], server: $gestion);
+        self::assertResponseStatusCodeSame(403);
+        $this->client->request('DELETE', '/api/adhesions/'.$reprise['id'], server: $admin);
+        self::assertResponseStatusCodeSame(204);
+        $nouvelle = $this->envoyer('POST', '/api/adhesions', $base + ['debut' => '2009-10-17', 'fin' => '2025-12-31'], $admin);
+        self::assertResponseStatusCodeSame(201);
+
+        // Une adhésion avec des cotisations ne se supprime pas.
+        $this->envoyer('POST', '/api/cotisations', ['adhesion' => '/api/adhesions/'.$nouvelle['id'], 'debut' => '2025-01-01', 'montant' => '60.00'], $admin);
+        self::assertResponseStatusCodeSame(201);
+        $this->client->request('DELETE', '/api/adhesions/'.$nouvelle['id'], server: $admin);
+        self::assertResponseStatusCodeSame(422);
+
+        // Rôle passé : début et fin modifiables.
+        $role = $this->envoyer('POST', '/api/roles', ['personne' => '/api/personnes/'.$id, 'organisation' => '/api/organisations/'.$mere,
+            'role' => 'chef_de_file', 'debut' => '2010-01-01', 'fin' => '2011-12-31'], $admin);
+        $role = $this->envoyer('PATCH', '/api/roles/'.$role['id'], ['debut' => '2012-01-01', 'fin' => '2013-12-31'], $gestion);
+        self::assertSame(['2012-01-01', '2013-12-31'], [substr($role['debut'], 0, 10), substr($role['fin'], 0, 10)]);
+    }
 }

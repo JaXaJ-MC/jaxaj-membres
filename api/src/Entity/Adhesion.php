@@ -3,6 +3,7 @@
 namespace App\Entity;
 
 use ApiPlatform\Metadata\ApiResource;
+use ApiPlatform\Metadata\Delete;
 use ApiPlatform\Metadata\Get;
 use ApiPlatform\Metadata\GetCollection;
 use ApiPlatform\Metadata\Patch;
@@ -10,6 +11,7 @@ use ApiPlatform\Metadata\Post;
 use ApiPlatform\Metadata\QueryParameter;
 use App\Doctrine\Periode;
 use App\Filter\Egal;
+use Doctrine\ORM\Event\PreRemoveEventArgs;
 use Doctrine\ORM\Mapping as ORM;
 use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Uid\Uuid;
@@ -20,6 +22,7 @@ use Symfony\Component\Validator\Constraints as Assert;
  * fin inclus, fin vide = en cours). Passer de suiveur à full patch : clore l'une, ouvrir l'autre.
  */
 #[ORM\Entity]
+#[ORM\HasLifecycleCallbacks]
 #[ORM\Table(name: 'adhesion', schema: 'adhesion')]
 #[ApiResource(
     operations: [
@@ -37,6 +40,7 @@ use Symfony\Component\Validator\Constraints as Assert;
             securityPostDenormalize: "is_granted('MEMBRES_ECRIRE_ADHESION', object)",
             denormalizationContext: ['groups' => ['adhesion:modifier']],
         ),
+        new Delete(security: "is_granted('MEMBRES_ADMIN')"),  // saisie erronée ; une adhésion terminée se clôt avec « fin »
     ],
     normalizationContext: ['groups' => ['adhesion:lire']],
     denormalizationContext: ['groups' => ['adhesion:ecrire', 'adhesion:modifier']],
@@ -102,12 +106,25 @@ class Adhesion
     public function getDebut(): ?\DateTimeImmutable { return $this->periode?->debut; }
 
     #[Groups(['adhesion:ecrire', 'adhesion:modifier'])]
-    public function setDebut(\DateTimeImmutable $debut): void { $this->periode = new Periode($debut, $this->periode?->fin); }
+    public function setDebut(\DateTimeImmutable $debut): void { $this->periode = new Periode($debut, $this->periode?->fin, false); }
 
     /** Dernier jour inclus ; vide tant que l'adhésion est en cours. */
     #[Groups(['adhesion:lire'])]
     public function getFin(): ?\DateTimeImmutable { return $this->periode?->fin; }
 
     #[Groups(['adhesion:ecrire', 'adhesion:modifier'])]
-    public function setFin(?\DateTimeImmutable $fin): void { $this->periode = new Periode($this->periode?->debut, $fin); }
+    public function setFin(?\DateTimeImmutable $fin): void { $this->periode = new Periode($this->periode?->debut, $fin, false); }
+
+    #[Assert\IsTrue(message: 'La date de fin précède la date de début.')]
+    public function isPeriodeCoherente(): bool { return $this->periode?->coherente() ?? true; }
+
+    /** Une adhésion qui porte des cotisations ne se supprime pas : ce serait effacer leur historique de paiement. */
+    #[ORM\PreRemove]
+    public function refuserSiCotisations(PreRemoveEventArgs $args): void
+    {
+        $n = $args->getObjectManager()->getRepository(Cotisation::class)->count(['adhesion' => $this]);
+        if ($n > 0) {
+            throw new \DomainException("Cette adhésion porte $n cotisation(s) : corrigez plutôt ses dates.");
+        }
+    }
 }
