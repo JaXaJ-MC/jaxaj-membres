@@ -231,4 +231,83 @@ class ApiMembresTest extends WebTestCase
         $this->envoyer('POST', "/api/personnes/$avec/paiement-mois", ['mois' => '2027-04'], $accueil);
         self::assertResponseStatusCodeSame(403);
     }
+
+    public function testChangementDeNiveau(): void
+    {
+        $admin = $this->jeton(['membres:admin']);
+        $euskadi = $this->association('JaXaJ MC Euskadi');
+        $id = $this->envoyer('POST', '/api/personnes', ['nom' => 'Etcheverry', 'prenom' => 'Ane'], $admin)['id'];
+        $suiveur = $this->envoyer('POST', '/api/adhesions', ['membre' => '/api/personnes/'.$id, 'association' => '/api/organisations/'.$euskadi,
+            'categorie' => '/api/categories/suiveur', 'debut' => '2027-01-01'], $admin)['id'];
+
+        // Suiveur → full patch au 1er avril : l'ancienne se termine le 31 mars, la nouvelle reste ouverte.
+        $r = $this->envoyer('POST', "/api/adhesions/$suiveur/changement", ['categorie' => 'full_patch', 'date' => '2027-04-01'], $admin);
+        self::assertResponseStatusCodeSame(201);
+        self::assertSame(['categorie' => 'suiveur', 'debut' => '2027-01-01', 'fin' => '2027-03-31'], array_diff_key($r['ancienne'], ['id' => 1]));
+        self::assertSame(['categorie' => 'full_patch', 'debut' => '2027-04-01', 'fin' => null], array_diff_key($r['nouvelle'], ['id' => 1]));
+        self::assertCount(2, $this->lire('/api/adhesions?membre='.$id, $admin));
+        self::assertSame('full_patch', array_values(array_filter($this->lire('/api/liste?mois=2027-05', $admin)['personnes'], fn ($p) => $p['id'] === $id))[0]['categorie']);
+
+        // Même niveau, date hors période, catégorie inconnue : refusés.
+        $nouvelle = $r['nouvelle']['id'];
+        $this->envoyer('POST', "/api/adhesions/$nouvelle/changement", ['categorie' => 'full_patch', 'date' => '2027-06-01'], $admin);
+        self::assertResponseStatusCodeSame(422);
+        $this->envoyer('POST', "/api/adhesions/$nouvelle/changement", ['categorie' => 'observateur', 'date' => '2027-02-01'], $admin);
+        self::assertResponseStatusCodeSame(422);
+        $this->envoyer('POST', "/api/adhesions/$nouvelle/changement", ['categorie' => 'inconnue', 'date' => '2027-06-01'], $admin);
+        self::assertResponseStatusCodeSame(400);
+
+        // L'accueil ne peut pas faire passer quelqu'un full patch.
+        $this->envoyer('POST', "/api/adhesions/$nouvelle/changement", ['categorie' => 'observateur', 'date' => '2027-06-01'],
+            $this->jeton(['membres:accueil']));
+        self::assertResponseStatusCodeSame(403);
+    }
+
+    public function testRoles(): void
+    {
+        $admin = $this->jeton(['membres:admin']);
+        $bearn = $this->association('JaXaJ MC Béarn');
+        $mere = $this->association('JaXaJ MC');
+        $a = $this->envoyer('POST', '/api/personnes', ['nom' => 'Lassalle', 'prenom' => 'Jean'], $admin)['id'];
+        $b = $this->envoyer('POST', '/api/personnes', ['nom' => 'Bordes', 'prenom' => 'Marie'], $admin)['id'];
+
+        $president = $this->envoyer('POST', '/api/roles', ['personne' => '/api/personnes/'.$a, 'organisation' => '/api/organisations/'.$bearn,
+            'role' => 'president', 'debut' => '2026-01-17'], $admin);
+        self::assertResponseStatusCodeSame(201);
+        $this->envoyer('POST', '/api/roles', ['personne' => '/api/personnes/'.$b, 'organisation' => '/api/organisations/'.$mere,
+            'role' => 'tresorier', 'debut' => '2026-01-17'], $admin);
+        self::assertResponseStatusCodeSame(201);
+
+        // Un seul président à la fois : refusé tant que le mandat en cours n'est pas terminé.
+        $nouveau = ['personne' => '/api/personnes/'.$b, 'organisation' => '/api/organisations/'.$bearn, 'role' => 'president', 'debut' => '2027-01-16'];
+        $conflit = $this->envoyer('POST', '/api/roles', $nouveau, $admin);
+        self::assertResponseStatusCodeSame(409);
+        self::assertStringContainsString('un seul président', $conflit['detail']);
+        $fin = $this->envoyer('PATCH', '/api/roles/'.$president['id'], ['fin' => '2027-01-15'], $admin);
+        self::assertSame('2027-01-15', substr($fin['fin'], 0, 10));
+        $this->envoyer('POST', '/api/roles', $nouveau, $admin);
+        self::assertResponseStatusCodeSame(201);
+
+        // Rôle inconnu : refusé. Historique par personne et par association.
+        $this->envoyer('POST', '/api/roles', ['role' => 'roi'] + $nouveau, $admin);
+        self::assertResponseStatusCodeSame(422);
+        self::assertCount(2, $this->lire('/api/roles?organisation='.$bearn, $admin));
+        self::assertSame(['tresorier', 'president'], array_column($this->lire('/api/roles?personne='.$b, $admin), 'role'));
+
+        // Les rôles en cours (aujourd'hui) apparaissent dans la liste.
+        $ligne = array_values(array_filter($this->lire('/api/liste', $admin)['personnes'], fn ($p) => $p['id'] === $b))[0];
+        self::assertSame([['role' => 'tresorier', 'organisation' => $mere]], $ligne['roles']);
+
+        // La gestion du Béarn gère les rôles du Béarn, pas ceux de la mère ; l'accueil, aucun.
+        $gestionBearn = $this->jeton(['membres:gestion:'.$bearn]);
+        $this->envoyer('POST', '/api/roles', ['personne' => '/api/personnes/'.$a, 'organisation' => '/api/organisations/'.$bearn,
+            'role' => 'secretaire', 'debut' => '2026-02-01'], $gestionBearn);
+        self::assertResponseStatusCodeSame(201);
+        $this->envoyer('POST', '/api/roles', ['personne' => '/api/personnes/'.$a, 'organisation' => '/api/organisations/'.$mere,
+            'role' => 'secretaire', 'debut' => '2026-02-01'], $gestionBearn);
+        self::assertResponseStatusCodeSame(403);
+        $this->envoyer('POST', '/api/roles', ['personne' => '/api/personnes/'.$a, 'organisation' => '/api/organisations/'.$bearn,
+            'role' => 'representant', 'debut' => '2026-02-01'], $this->jeton(['membres:accueil']));
+        self::assertResponseStatusCodeSame(403);
+    }
 }

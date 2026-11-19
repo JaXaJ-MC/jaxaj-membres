@@ -15,7 +15,7 @@ use Symfony\Component\HttpKernel\Event\ExceptionEvent;
 final class ConflitsEnBase
 {
     private const MESSAGES = [
-        '23P01' => 'Chevauchement de périodes : une adhésion, une cotisation ou un tarif existe déjà sur ces dates.',
+        '23P01' => 'Chevauchement de périodes : une adhésion, une cotisation, un tarif ou un rôle existe déjà sur ces dates (un seul président, trésorier… à la fois par association).',
         '23505' => 'Doublon : cet élément existe déjà.',
         '23503' => 'Référence inconnue ou encore utilisée.',
         '23514' => 'Valeur refusée par une règle de la base.',

@@ -4,6 +4,7 @@ namespace App\Security;
 
 use App\Entity\Adhesion;
 use App\Entity\Cotisation;
+use App\Entity\Representation;
 use Symfony\Component\Security\Core\Authentication\Token\TokenInterface;
 use Symfony\Component\Security\Core\Authorization\Voter\Vote;
 use Symfony\Component\Security\Core\Authorization\Voter\Voter;
@@ -11,7 +12,7 @@ use Symfony\Component\Security\Core\Authorization\Voter\Voter;
 /**
  * Droits de l'application membres :
  *   membres:admin               tout
- *   membres:gestion[:asso]      personnes, adhésions et cotisations (de l'association donnée)
+ *   membres:gestion[:asso]      personnes, adhésions, cotisations et rôles (de l'association donnée)
  *   membres:accueil[:asso]      à l'entrée d'un événement : rechercher, inscrire une personne,
  *                               lui faire adhérer comme « adhérent événement » (de l'association)
  */
@@ -21,6 +22,7 @@ final class DroitsMembres extends Voter
     public const DETAIL = 'MEMBRES_DETAIL';           // adresse, téléphone, date de naissance…
     public const ECRIRE_PERSONNE = 'MEMBRES_ECRIRE_PERSONNE';
     public const ECRIRE_ADHESION = 'MEMBRES_ECRIRE_ADHESION'; // sujet : Adhesion ou Cotisation
+    public const ECRIRE_ROLE = 'MEMBRES_ECRIRE_ROLE';     // sujet : Representation
     public const ADMIN = 'MEMBRES_ADMIN';
 
     protected function supports(string $attribute, mixed $subject): bool
@@ -44,8 +46,20 @@ final class DroitsMembres extends Voter
             self::LIRE, self::ECRIRE_PERSONNE => null !== $gestion || null !== $accueil,
             self::DETAIL => null !== $gestion,
             self::ECRIRE_ADHESION => $this->adhesion($subject, $gestion, $accueil),
+            self::ECRIRE_ROLE => $this->role($subject, $gestion),
             default => false,
         };
+    }
+
+    /** Rôles : la gestion, dans son périmètre (l'organisation du rôle, ou toutes). */
+    private function role(mixed $sujet, ?array $gestion): bool
+    {
+        if (null === $gestion) {
+            return false;
+        }
+        $organisation = $sujet instanceof Representation ? $sujet->getOrganisation() : null;
+
+        return [] === $gestion || ($organisation && in_array((string) $organisation->getId(), $gestion, true));
     }
 
     private function adhesion(mixed $sujet, ?array $gestion, ?array $accueil): bool
