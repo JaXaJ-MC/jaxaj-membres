@@ -18,8 +18,9 @@ use Symfony\Component\Validator\Constraints as Assert;
 
 /**
  * Rôle d'une personne dans une organisation, sur une période : président, trésorier… d'une
- * association JaXaJ, ou représentant d'un club ou d'une association. La base garantit un seul
- * président (vice-président, trésorier, secrétaire) à la fois par organisation.
+ * association JaXaJ, sergent d'armes, chef de file, ou représentant d'un club ou d'une
+ * association. La base garantit un seul titulaire à la fois par organisation, sauf pour
+ * « représentant ».
  */
 #[ORM\Entity]
 #[ORM\Table(name: 'representation', schema: 'annuaire')]
@@ -46,7 +47,7 @@ use Symfony\Component\Validator\Constraints as Assert;
 )]
 class Representation
 {
-    public const ROLES = ['president', 'vice_president', 'tresorier', 'secretaire', 'representant'];
+    public const ROLES = ['president', 'vice_president', 'tresorier', 'secretaire', 'sergent_armes', 'chef_de_file', 'representant'];
 
     #[ORM\Id]
     #[ORM\Column(type: 'uuid')]
@@ -66,7 +67,7 @@ class Representation
     private ?Organisation $organisation = null;
 
     #[ORM\Column]
-    #[Assert\Choice(choices: self::ROLES, message: 'Rôle inconnu : président, vice_president, tresorier, secretaire ou representant.')]
+    #[Assert\Choice(choices: self::ROLES, message: 'Rôle inconnu : president, vice_president, tresorier, secretaire, sergent_armes, chef_de_file ou representant.')]
     #[Groups(['role:lire', 'role:ecrire'])]
     private string $role = 'representant';
 

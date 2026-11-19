@@ -107,12 +107,13 @@ create table annuaire.representation (
   id              uuid primary key default gen_random_uuid(),
   personne_id     uuid not null references annuaire.personne (id) on delete cascade,
   organisation_id uuid not null references annuaire.organisation (id) on delete cascade,
-  role            text not null check (role in
-                    ('president', 'vice_president', 'tresorier', 'secretaire', 'representant')),
+  role            text not null constraint representation_role_check check (role in
+                    ('president', 'vice_president', 'tresorier', 'secretaire',
+                     'sergent_armes', 'chef_de_file', 'representant')),
   periode         daterange not null default daterange(current_date, null),
   cree_le         timestamptz not null default now(),
   modifie_le      timestamptz not null default now(),
-  -- un seul président (trésorier, secrétaire…) à la fois par organisation
+  -- un seul titulaire à la fois par organisation, sauf pour « représentant »
   exclude using gist (organisation_id with =, role with =, periode with &&)
     where (role <> 'representant')
 );

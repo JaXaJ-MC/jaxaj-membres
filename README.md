@@ -5,6 +5,7 @@ Annuaire, adhésions, cotisations et contrôle d'accès du club JaXaJ MC. Premi�
 - `docs/modele.md` : le modèle de données, les choix et les questions ouvertes.
 - `sql/01_schema.sql` : schémas `annuaire` et `adhesion` (PostgreSQL 13 ou plus).
 - `sql/02_reference.sql` : associations JaXaJ, catégories de membre, tarifs.
+- `sql/migrations/` : évolutions du schéma pour une base existante (voir son README) ; `01_schema.sql` reste toujours complet et à jour.
 - `reprise/reprise_free.py` : reprise de l'ancienne base MySQL (Free, 2009-2020). Usage : `reprise_free.py <export.sql> <dossier de sortie>` ; la sortie contient des données personnelles et ne doit jamais être versionnée.
 
 - `api/` : l'API (Symfony 7.4 LTS, API Platform, Doctrine), PHP 8.4, sécurisée par les jetons de l'appli comptes ; voir `api/README.md`. Le schéma SQL reste la référence : Doctrine lit les tables, il ne les crée pas.

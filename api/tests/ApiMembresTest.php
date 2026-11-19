@@ -288,10 +288,19 @@ class ApiMembresTest extends WebTestCase
         $this->envoyer('POST', '/api/roles', $nouveau, $admin);
         self::assertResponseStatusCodeSame(201);
 
+        // Sergent d'armes et chef de file : un titulaire à la fois, comme les autres.
+        $sergent = ['personne' => '/api/personnes/'.$a, 'organisation' => '/api/organisations/'.$bearn, 'role' => 'sergent_armes', 'debut' => '2026-03-01'];
+        $this->envoyer('POST', '/api/roles', $sergent, $admin);
+        self::assertResponseStatusCodeSame(201);
+        $this->envoyer('POST', '/api/roles', ['personne' => '/api/personnes/'.$b] + $sergent, $admin);
+        self::assertResponseStatusCodeSame(409);
+        $this->envoyer('POST', '/api/roles', ['role' => 'chef_de_file'] + $sergent, $admin);
+        self::assertResponseStatusCodeSame(201);
+
         // Rôle inconnu : refusé. Historique par personne et par association.
         $this->envoyer('POST', '/api/roles', ['role' => 'roi'] + $nouveau, $admin);
         self::assertResponseStatusCodeSame(422);
-        self::assertCount(2, $this->lire('/api/roles?organisation='.$bearn, $admin));
+        self::assertCount(4, $this->lire('/api/roles?organisation='.$bearn, $admin));
         self::assertSame(['tresorier', 'president'], array_column($this->lire('/api/roles?personne='.$b, $admin), 'role'));
 
         // Les rôles en cours (aujourd'hui) apparaissent dans la liste.

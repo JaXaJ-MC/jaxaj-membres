@@ -24,7 +24,7 @@ L'API vérifie le JWT délivré par l'appli comptes (`jaxaj-comptes`), avec la c
 | `/api/personnes/{id}/acces` | lecture | `?jour=AAAA-MM-JJ&association=<uuid>` : a-t-elle une cotisation réglée ou gratuite ce jour-là ? |
 | `/api/adhesions` | liste, lecture, création, modification | `?membre=`, `?association=` ; `debut` et `fin` inclus, fin vide = en cours ; chevauchement refusé (409) |
 | `/api/adhesions/{id}/changement` | création | `{"categorie": "full_patch", "date": "AAAA-MM-JJ"}` : change de niveau, en close l'adhésion la veille et ouvre la nouvelle à la date, même association, en une transaction |
-| `/api/roles` | liste, lecture, création, modification, suppression | rôle d'une personne dans une organisation (president, vice_president, tresorier, secretaire, representant) sur une période ; `?personne=`, `?organisation=` ; un seul président (trésorier…) à la fois par organisation (409) ; fin de mandat par `fin` ; suppression réservée à l'administration |
+| `/api/roles` | liste, lecture, création, modification, suppression | rôle d'une personne dans une organisation (president, vice_president, tresorier, secretaire, sergent_armes, chef_de_file, representant) sur une période ; `?personne=`, `?organisation=` ; un seul titulaire à la fois par organisation, sauf « representant » (409) ; fin de mandat par `fin` ; suppression réservée à l'administration |
 | `/api/cotisations` | liste, lecture, création | `?adhesion=`, `?membre=` ; sans `fin`, couvre le mois ; sans `montant`, le tarif en vigueur s'applique |
 | `/api/organisations` | liste, lecture | associations JaXaJ, clubs… |
 | `/api/categories` | liste, lecture | full_patch, observateur, suiveur, support, public (adhérent événement), association |
