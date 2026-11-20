@@ -451,6 +451,10 @@ class ApiMembresTest extends WebTestCase
         $etat = $this->lire('/api/personnes/'.$id.'/cotisations', $admin);
         self::assertSame([true, true, 'Membre du bureau (statuts)', '2022-01-01'], [$etat[0]['gratuite'], $etat[0]['aJour'], $etat[0]['motifGratuite'], end($etat)['debut']]);
 
+        // La liste donne toutes les adhésions du mois, pas seulement la principale.
+        $ligne = array_values(array_filter($this->lire('/api/liste', $admin)['personnes'], fn ($l) => $l['id'] === $id))[0];
+        self::assertSame([['association' => $prod, 'categorie' => 'adherent']], $ligne['adhesions']);
+
         // Sans exemption : 20 € par an. Un artiste ne cotise pas, le public non plus (ponctuel).
         $this->envoyer('PATCH', '/api/adhesions/'.$adhesion['id'], ['exemption' => ''], $admin);
         $r = $this->envoyer('POST', '/api/personnes/'.$id.'/cotisations/calcul', [], $admin);

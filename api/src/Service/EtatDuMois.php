@@ -43,7 +43,7 @@ final class EtatDuMois
             select p.id, p.nom, p.prenom, p.surnom,
                    adh.id as adhesion, adh.association_id as association, adh.categorie,
                    ce.montant, ce.regle, ce.gratuite, ce.a_jour, t.montant as tarif,
-                   derniere.fin as derniere_cotisation, ro.roles
+                   derniere.fin as derniere_cotisation, ro.roles, ad.adhesions
             from annuaire.personne p
             left join adh on adh.membre_id = p.id
             left join adhesion.cotisation_etat ce
@@ -57,6 +57,11 @@ final class EtatDuMois
               from annuaire.representation r
               where r.personne_id = p.id and r.periode @> current_date
             ) ro on true
+            left join lateral (
+              select json_agg(json_build_object('association', a.association_id, 'categorie', a.categorie) order by k.ordre) as adhesions
+              from adhesion.adhesion a join adhesion.categorie k on k.code = a.categorie
+              where a.membre_id = p.id and a.periode && daterange((select d from m), (select f from m))
+            ) ad on true
             where cast(:personne as uuid) is null or p.id = cast(:personne as uuid)
             order by p.recherche
             SQL,
@@ -74,6 +79,7 @@ final class EtatDuMois
             'mois' => $this->statut($l),
             'derniere_cotisation' => $l['derniere_cotisation'],
             'roles' => $l['roles'] ? json_decode($l['roles'], true) : [],  // rôles en cours aujourd'hui
+            'adhesions' => $l['adhesions'] ? json_decode($l['adhesions'], true) : [],  // toutes celles du mois
         ], $lignes);
     }
 
