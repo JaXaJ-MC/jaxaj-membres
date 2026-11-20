@@ -29,7 +29,7 @@ use Symfony\Component\Validator\Constraints as Assert;
                 'membre' => new QueryParameter(filter: new Egal('adhesion.membre'), description: 'UUID de la personne'),
             ],
         ),
-        new Get(security: "is_granted('MEMBRES_LIRE')"),
+        new Get(security: "is_granted('MEMBRES_VOIR', object)"),
         new Post(securityPostDenormalize: "is_granted('MEMBRES_ECRIRE_ADHESION', object)"),
     ],
     normalizationContext: ['groups' => ['cotisation:lire']],

@@ -33,7 +33,7 @@ use Symfony\Component\Validator\Constraints as Assert;
                 'association' => new QueryParameter(filter: new Egal('association'), description: 'UUID de l\'association'),
             ],
         ),
-        new Get(security: "is_granted('MEMBRES_LIRE')"),
+        new Get(security: "is_granted('MEMBRES_VOIR', object)"),
         new Post(securityPostDenormalize: "is_granted('MEMBRES_ECRIRE_ADHESION', object)"),
         new Patch(
             security: "is_granted('MEMBRES_ECRIRE_ADHESION', object)",

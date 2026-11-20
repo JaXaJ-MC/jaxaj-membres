@@ -4,6 +4,7 @@ namespace App\Security;
 
 use App\Entity\Adhesion;
 use App\Entity\Cotisation;
+use App\Entity\Personne;
 use App\Entity\Representation;
 use Symfony\Component\Security\Core\Authentication\Token\TokenInterface;
 use Symfony\Component\Security\Core\Authorization\Voter\Vote;
@@ -15,15 +16,20 @@ use Symfony\Component\Security\Core\Authorization\Voter\Voter;
  *   membres:gestion[:asso]      personnes, adhésions, cotisations et rôles (de l'association donnée)
  *   membres:accueil[:asso]      à l'entrée d'un événement : rechercher, inscrire une personne,
  *                               lui faire adhérer comme « adhérent événement » (de l'association)
+ *
+ * Ce que chacun voit (personnes, détail, historique) : voir Visibilite.
  */
 final class DroitsMembres extends Voter
 {
     public const LIRE = 'MEMBRES_LIRE';               // rechercher, consulter
-    public const DETAIL = 'MEMBRES_DETAIL';           // adresse, téléphone, date de naissance…
     public const ECRIRE_PERSONNE = 'MEMBRES_ECRIRE_PERSONNE';
     public const ECRIRE_ADHESION = 'MEMBRES_ECRIRE_ADHESION'; // sujet : Adhesion ou Cotisation
     public const ECRIRE_ROLE = 'MEMBRES_ECRIRE_ROLE';     // sujet : Representation
     public const ADMIN = 'MEMBRES_ADMIN';
+    public const VOIR = 'MEMBRES_VOIR';               // sujet : Personne, Adhesion, Cotisation, Representation
+    public const MODIFIER_PERSONNE = 'MEMBRES_MODIFIER_PERSONNE'; // sujet : Personne
+
+    public function __construct(private Visibilite $visibilite) {}
 
     protected function supports(string $attribute, mixed $subject): bool
     {
@@ -44,9 +50,22 @@ final class DroitsMembres extends Voter
 
         return match ($attribute) {
             self::LIRE, self::ECRIRE_PERSONNE => null !== $gestion || null !== $accueil,
-            self::DETAIL => null !== $gestion,
             self::ECRIRE_ADHESION => $this->adhesion($subject, $gestion, $accueil),
             self::ECRIRE_ROLE => $this->role($subject, $gestion),
+            self::VOIR => (null !== $gestion || null !== $accueil) && $this->voir($subject),
+            self::MODIFIER_PERSONNE => (null !== $gestion || null !== $accueil)
+                && $subject instanceof Personne && $this->visibilite->voitDetail((string) $subject->getId()),
+            default => false,
+        };
+    }
+
+    private function voir(mixed $sujet): bool
+    {
+        return match (true) {
+            $sujet instanceof Personne => $this->visibilite->voitPersonne((string) $sujet->getId()),
+            $sujet instanceof Adhesion => $this->visibilite->voitAssociation($sujet->getAssociation()?->getId()?->toRfc4122()),
+            $sujet instanceof Cotisation => $this->visibilite->voitAssociation($sujet->getAdhesion()?->getAssociation()?->getId()?->toRfc4122()),
+            $sujet instanceof Representation => $this->visibilite->voitAssociation($sujet->getOrganisation()?->getId()?->toRfc4122()),
             default => false,
         };
     }

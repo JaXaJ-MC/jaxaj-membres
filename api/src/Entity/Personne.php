@@ -29,9 +29,9 @@ use Symfony\Component\Validator\Constraints as Assert;
             order: ['nom' => 'ASC', 'prenom' => 'ASC'],
             parameters: ['q' => new QueryParameter(filter: new RechercheTexte(), description: 'Mots à chercher dans le nom, le prénom et le surnom, sans accents ni majuscules')],
         ),
-        new Get(security: "is_granted('MEMBRES_LIRE')"),
+        new Get(security: "is_granted('MEMBRES_VOIR', object)"),
         new Post(security: "is_granted('MEMBRES_ECRIRE_PERSONNE')"),
-        new Patch(security: "is_granted('MEMBRES_ECRIRE_PERSONNE')"),
+        new Patch(security: "is_granted('MEMBRES_MODIFIER_PERSONNE', object)"),  // celles dont on voit le détail
     ],
     normalizationContext: ['groups' => ['personne:lire']],
     denormalizationContext: ['groups' => ['personne:ecrire']],

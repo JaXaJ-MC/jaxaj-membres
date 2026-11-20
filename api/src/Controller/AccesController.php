@@ -3,6 +3,7 @@
 namespace App\Controller;
 
 use App\Security\DroitsMembres;
+use App\Security\Visibilite;
 use Doctrine\DBAL\Connection;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -20,7 +21,7 @@ final class AccesController extends AbstractController
 {
     #[Route('/api/personnes/{id}/acces', methods: ['GET'], requirements: ['id' => '[0-9a-f-]{36}'])]
     #[IsGranted(DroitsMembres::LIRE)]
-    public function __invoke(string $id, Request $requete, Connection $base): JsonResponse
+    public function __invoke(string $id, Request $requete, Connection $base, Visibilite $visibilite): JsonResponse
     {
         $jour = $requete->query->get('jour', date('Y-m-d'));
         // ?association=<uuid>, répétable sous la forme ?association[]=<uuid>&association[]=<uuid>
@@ -32,6 +33,9 @@ final class AccesController extends AbstractController
         }
         if (!$base->fetchOne('select 1 from annuaire.personne where id = :id', ['id' => $id])) {
             return $this->json(['detail' => 'Personne inconnue.'], 404);
+        }
+        if (!$visibilite->voitPersonne($id)) {
+            throw $this->createAccessDeniedException();
         }
         $filtre = $associations ? 'and association_id = any(cast(:assos as uuid[]))' : '';
         $cotisations = $base->fetchAllAssociative(

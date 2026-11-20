@@ -46,6 +46,12 @@ class ApiMembresTest extends WebTestCase
         return json_decode($this->client->getResponse()->getContent(), true) ?? [];
     }
 
+    private function creeeHier(string $personne): void
+    {
+        static::getContainer()->get(Connection::class)->executeStatement(
+            "update annuaire.personne set cree_le = now() - interval '1 day' where id = :id", ['id' => $personne]);
+    }
+
     private function lire(string $chemin, array $jeton): array
     {
         $this->client->request('GET', $chemin, server: $jeton);
@@ -107,8 +113,9 @@ class ApiMembresTest extends WebTestCase
         $accueil = $this->jeton(['membres:accueil:'.$prod]);
         $id = $this->envoyer('POST', '/api/personnes', ['nom' => 'Durand', 'dateNaissance' => '1990-01-01',
             'telephone' => '0600000000'], $admin)['id'];
+        $this->creeeHier($id);
 
-        // L'accueil lit la fiche sans les coordonnées ni la date de naissance.
+        // L'accueil lit une fiche ancienne sans les coordonnées ni la date de naissance.
         $fiche = $this->lire('/api/personnes/'.$id, $accueil);
         self::assertSame('Durand', $fiche['nom']);
         self::assertArrayNotHasKey('telephone', $fiche);
@@ -117,6 +124,13 @@ class ApiMembresTest extends WebTestCase
         // Il inscrit une personne sur place, et la fait adhérer comme adhérent événement à Productions.
         $nouveau = $this->envoyer('POST', '/api/personnes', ['nom' => 'Martin', 'email' => 'martin@example.org'], $accueil);
         self::assertResponseStatusCodeSame(201);
+
+        // Une fiche du jour, il la relit en entier et peut la corriger ; une ancienne, non.
+        self::assertSame('martin@example.org', $this->lire('/api/personnes/'.$nouveau['id'], $accueil)['email']);
+        $this->envoyer('PATCH', '/api/personnes/'.$nouveau['id'], ['email' => 'p.martin@example.org'], $accueil);
+        self::assertResponseIsSuccessful();
+        $this->envoyer('PATCH', '/api/personnes/'.$id, ['nom' => 'Dupont'], $accueil);
+        self::assertResponseStatusCodeSame(403);
         $adhesion = ['membre' => '/api/personnes/'.$nouveau['id'], 'association' => '/api/organisations/'.$prod,
             'categorie' => '/api/categories/public', 'debut' => '2027-03-13'];
         $this->envoyer('POST', '/api/adhesions', $adhesion, $accueil);
@@ -464,5 +478,63 @@ class ApiMembresTest extends WebTestCase
         self::assertResponseStatusCodeSame(201);
         $r = $this->envoyer('POST', '/api/personnes/'.$artiste.'/cotisations/calcul', [], $admin);
         self::assertSame([0, []], [$r['creees'], $r['sans_tarif']]);
+    }
+
+    /** Gestion d'une association : ses personnes seulement (anciens compris), avec leur détail. */
+    public function testGestionLimiteeAUneAssociation(): void
+    {
+        $admin = $this->jeton(['membres:admin']);
+        $bearn = $this->association('JaXaJ MC Béarn');
+        $euskadi = $this->association('JaXaJ MC Euskadi');
+        $prod = $this->association('JaXaJ Productions');
+        $personne = fn (string $nom) => $this->envoyer('POST', '/api/personnes', ['nom' => $nom, 'telephone' => '0611223344'], $admin)['id'];
+        $adherer = fn (string $p, string $asso, string $cat, string $debut, ?string $fin = null) => $this->envoyer('POST', '/api/adhesions',
+            ['membre' => '/api/personnes/'.$p, 'association' => '/api/organisations/'.$asso, 'categorie' => '/api/categories/'.$cat, 'debut' => $debut, 'fin' => $fin], $admin);
+        $ancien = $personne('Ancien-du-Bearn');
+        $adherer($ancien, $bearn, 'full_patch', '2015-01-01', '2020-12-31');
+        $adherer($ancien, $prod, 'adherent', '2022-01-01');
+        $basque = $personne('Basque');
+        $adherer($basque, $euskadi, 'full_patch', '2026-01-01');
+        $sergent = $personne('Sergent');
+        $this->envoyer('POST', '/api/roles', ['personne' => '/api/personnes/'.$sergent, 'organisation' => '/api/organisations/'.$bearn,
+            'role' => 'sergent_armes', 'debut' => '2026-01-01'], $admin);
+        foreach ([$ancien, $basque, $sergent] as $p) {
+            $this->creeeHier($p);
+        }
+
+        $gestion = $this->jeton(['membres:gestion:'.$bearn]);
+        $ids = array_column($this->lire('/api/liste', $gestion)['personnes'], 'id');
+        self::assertContains($ancien, $ids);   // ancien du Béarn
+        self::assertContains($sergent, $ids);  // rôle au Béarn, sans adhésion
+        self::assertNotContains($basque, $ids);
+        self::assertSame([$ancien], array_values(array_intersect([$ancien, $basque], array_column($this->lire('/api/personnes?q=a', $gestion), 'id'))));
+
+        // Sa fiche, avec le détail ; de son historique, seulement le Béarn.
+        self::assertSame('0611223344', $this->lire('/api/personnes/'.$ancien, $gestion)['telephone']);
+        self::assertSame(['full_patch'], array_map(fn ($a) => basename($a['categorie']), $this->lire('/api/adhesions?membre='.$ancien, $gestion)));
+        $this->lire('/api/personnes/'.$ancien.'/acces', $gestion);
+        self::assertResponseIsSuccessful();
+
+        // Une personne d'ailleurs : refusée partout.
+        foreach (['', '/acces', '/cotisations'] as $suite) {
+            $this->lire('/api/personnes/'.$basque.$suite, $gestion);
+            self::assertResponseStatusCodeSame(403);
+        }
+        $this->envoyer('PATCH', '/api/personnes/'.$basque, ['nom' => 'X'], $gestion);
+        self::assertResponseStatusCodeSame(403);
+        self::assertSame([], $this->lire('/api/adhesions?membre='.$basque, $gestion));
+
+        // Nouvelle fiche : visible dès que l'adhésion au Béarn est posée.
+        $nouveau = $this->envoyer('POST', '/api/personnes', ['nom' => 'Prospect'], $gestion)['id'];
+        $this->envoyer('POST', '/api/adhesions', ['membre' => '/api/personnes/'.$nouveau, 'association' => '/api/organisations/'.$bearn,
+            'categorie' => '/api/categories/suiveur', 'debut' => '2026-11-01'], $gestion);
+        self::assertResponseStatusCodeSame(201);
+        $this->lire('/api/personnes/'.$nouveau, $gestion);
+        self::assertResponseIsSuccessful();
+
+        // Avec l'accueil en plus : tout le monde, le détail du Béarn seulement (et des fiches du jour).
+        $lesDeux = $this->jeton(['membres:gestion:'.$bearn, 'membres:accueil:'.$prod]);
+        self::assertArrayNotHasKey('telephone', $this->lire('/api/personnes/'.$basque, $lesDeux));
+        self::assertSame('0611223344', $this->lire('/api/personnes/'.$ancien, $lesDeux)['telephone']);
     }
 }

@@ -34,7 +34,7 @@ use Symfony\Component\Validator\Constraints as Assert;
                 'organisation' => new QueryParameter(filter: new Egal('organisation'), description: 'UUID de l\'organisation'),
             ],
         ),
-        new Get(security: "is_granted('MEMBRES_LIRE')"),
+        new Get(security: "is_granted('MEMBRES_VOIR', object)"),
         new Post(securityPostDenormalize: "is_granted('MEMBRES_ECRIRE_ROLE', object)"),
         new Patch(
             security: "is_granted('MEMBRES_ECRIRE_ROLE', object)",
