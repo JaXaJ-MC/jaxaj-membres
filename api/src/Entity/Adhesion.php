@@ -83,6 +83,11 @@ class Adhesion
     #[Groups(['adhesion:lire', 'adhesion:ecrire', 'adhesion:modifier'])]
     private ?string $commentaire = null;
 
+    /** Motif d'exemption de cotisation (statuts, décision du bureau…) : cotisations gratuites. */
+    #[ORM\Column(nullable: true)]
+    #[Groups(['adhesion:lire', 'adhesion:ecrire', 'adhesion:modifier'])]
+    private ?string $exemption = null;
+
     public function __construct()
     {
         $this->id = Uuid::v7();
@@ -101,6 +106,17 @@ class Adhesion
     public function getCommentaire(): ?string { return $this->commentaire; }
     public function setCommentaire(?string $c): void { $this->commentaire = $c; }
     public function getPeriode(): ?Periode { return $this->periode; }
+    public function getExemption(): ?string { return $this->exemption; }
+    public function setExemption(?string $e): void { $this->exemption = '' === trim((string) $e) ? null : trim($e); }
+
+    /** Les catégories du club vont aux associations du club, celles de l'événementiel à Productions. */
+    #[Assert\IsTrue(message: 'Cette catégorie n\'existe pas dans cette association (club ou événementiel).')]
+    public function isCategorieDuVolet(): bool
+    {
+        $volet = $this->association?->getVolet();
+
+        return !$volet || !$this->categorie || $this->categorie->getVolet() === $volet;
+    }
 
     #[Groups(['adhesion:lire'])]
     public function getDebut(): ?\DateTimeImmutable { return $this->periode?->debut; }

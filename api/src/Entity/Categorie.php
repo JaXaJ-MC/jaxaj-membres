@@ -38,7 +38,19 @@ class Categorie
     #[ORM\Column]
     private int $ordre;
 
+    /** club (mère et chapitres) ou evenementiel (Productions) : associations où elle s'applique. */
+    #[ORM\Column]
+    #[Groups(['categorie:lire'])]
+    private string $volet = 'club';
+
+    /** periodique (calculée d'après les tarifs), ponctuelle (par événement) ou aucune. */
+    #[ORM\Column]
+    #[Groups(['categorie:lire'])]
+    private string $cotisation = 'periodique';
+
     public function getCode(): string { return $this->code; }
     public function getLibelle(): string { return $this->libelle; }
     public function isMembreClub(): bool { return $this->membreClub; }
+    public function getVolet(): string { return $this->volet; }
+    public function getCotisation(): string { return $this->cotisation; }
 }

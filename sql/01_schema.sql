@@ -66,6 +66,7 @@ create table annuaire.organisation (
   genre       text not null check (genre in
                 ('association_jaxaj', 'club_moto', 'association', 'entreprise', 'autre')),
   parent_id   uuid references annuaire.organisation (id),  -- association mère d'un chapitre
+  volet       text check (volet in ('club', 'evenementiel')),  -- associations JaXaJ : club ou événementiel
   rna         text,  -- numéro du répertoire national des associations
   siret       text,
   commentaire text,
@@ -125,7 +126,10 @@ create table adhesion.categorie (
   code        text primary key,
   libelle     text not null,
   membre_club boolean not null,  -- fait partie du club, par opposition au public
-  ordre       int not null
+  ordre       int not null,
+  volet       text not null default 'club' check (volet in ('club', 'evenementiel')),  -- associations où elle s'applique
+  cotisation  text not null default 'periodique'  -- périodique : calculée d'après les tarifs
+                check (cotisation in ('periodique', 'ponctuelle', 'aucune'))
 );
 
 -- Tarifs votés en AG, par catégorie et périodicité. association_id vide : même tarif dans
@@ -158,6 +162,7 @@ create table adhesion.adhesion (
   periode        daterange not null,
   au_titre_de    uuid references annuaire.organisation (id),  -- club ou association représenté
   commentaire    text,
+  exemption      text,  -- motif d'exemption de cotisation (statuts…) : cotisations gratuites
   cree_le        timestamptz not null default now(),
   modifie_le     timestamptz not null default now(),
   check (not isempty(periode)),

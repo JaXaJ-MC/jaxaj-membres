@@ -425,4 +425,40 @@ class ApiMembresTest extends WebTestCase
         $this->client->request('DELETE', '/api/tarifs/'.$mensuel['id'], server: $admin);
         self::assertResponseStatusCodeSame(409);
     }
+
+    /** Productions : catégories de l'événementiel, adhérent exempté de cotisation. */
+    public function testVoletEvenementielEtExemption(): void
+    {
+        $admin = $this->jeton(['membres:admin']);
+        $prod = $this->association('JaXaJ Productions');
+        $id = $this->envoyer('POST', '/api/personnes', ['nom' => 'Larrieu', 'prenom' => 'Anne'], $admin)['id'];
+        $base = ['membre' => '/api/personnes/'.$id, 'association' => '/api/organisations/'.$prod, 'debut' => '2022-04-01'];
+
+        // Pas de full patch chez Productions, ni d'adhérent dans un chapitre.
+        $this->envoyer('POST', '/api/adhesions', $base + ['categorie' => '/api/categories/full_patch'], $admin);
+        self::assertResponseStatusCodeSame(422);
+        $this->envoyer('POST', '/api/adhesions', ['association' => '/api/organisations/'.$this->association('JaXaJ MC Béarn'),
+            'categorie' => '/api/categories/adherent'] + $base, $admin);
+        self::assertResponseStatusCodeSame(422);
+
+        // Adhérent exempté : une cotisation gratuite par an, avec le motif.
+        $adhesion = $this->envoyer('POST', '/api/adhesions', $base + ['categorie' => '/api/categories/adherent', 'exemption' => 'Membre du bureau (statuts)'], $admin);
+        self::assertResponseStatusCodeSame(201);
+        self::assertSame('Membre du bureau (statuts)', $adhesion['exemption']);
+        $r = $this->envoyer('POST', '/api/personnes/'.$id.'/cotisations/calcul', ['regleesJusquau' => '2025-12-31'], $admin);
+        $annees = (int) date('Y') - 2022 + 1;
+        self::assertSame([$annees, $annees, 0, '0.00', []], [$r['creees'], $r['exemptees'], $r['reglees'], $r['total'], $r['sans_tarif']]);
+        $etat = $this->lire('/api/personnes/'.$id.'/cotisations', $admin);
+        self::assertSame([true, true, 'Membre du bureau (statuts)', '2022-01-01'], [$etat[0]['gratuite'], $etat[0]['aJour'], $etat[0]['motifGratuite'], end($etat)['debut']]);
+
+        // Sans exemption : 20 € par an. Un artiste ne cotise pas, le public non plus (ponctuel).
+        $this->envoyer('PATCH', '/api/adhesions/'.$adhesion['id'], ['exemption' => ''], $admin);
+        $r = $this->envoyer('POST', '/api/personnes/'.$id.'/cotisations/calcul', [], $admin);
+        self::assertSame(number_format(20 * $annees, 2, '.', ''), $r['total']);
+        $artiste = $this->envoyer('POST', '/api/personnes', ['nom' => 'Les Rugissants'], $admin)['id'];
+        $this->envoyer('POST', '/api/adhesions', ['membre' => '/api/personnes/'.$artiste, 'categorie' => '/api/categories/artiste'] + $base, $admin);
+        self::assertResponseStatusCodeSame(201);
+        $r = $this->envoyer('POST', '/api/personnes/'.$artiste.'/cotisations/calcul', [], $admin);
+        self::assertSame([0, []], [$r['creees'], $r['sans_tarif']]);
+    }
 }

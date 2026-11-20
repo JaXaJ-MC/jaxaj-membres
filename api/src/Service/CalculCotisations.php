@@ -12,7 +12,8 @@ use Symfony\Component\Uid\Uuid;
  * vigueur pour sa catégorie et son association donne la période due, l'année civile pour un
  * tarif annuel, le mois sinon (l'annuel l'emporte si les deux existent). Une période déjà
  * couverte par une cotisation de la personne est laissée telle quelle ; sans tarif, elle est
- * signalée.
+ * signalée. Seules les catégories à cotisation périodique sont calculées ; une adhésion exemptée
+ * reçoit des cotisations gratuites portant le motif de l'exemption.
  *
  * Les cotisations créées sont marquées « calculée » : un nouveau calcul les remplace, sauf
  * celles qu'un vrai paiement a réglées. En option, celles qui se terminent au plus tard à une
@@ -26,7 +27,7 @@ final class CalculCotisations
     public function __construct(private readonly Connection $base) {}
 
     /**
-     * @return array{creees: int, total: string, reglees: int, conservees: int,
+     * @return array{creees: int, total: string, reglees: int, exemptees: int, conservees: int,
      *               sans_tarif: list<array{association: string, categorie: string, debut: string, fin: string}>}
      */
     public function calculer(string $personne, ?\DateTimeImmutable $regleesJusquau, bool $simuler): array
@@ -66,10 +67,11 @@ final class CalculCotisations
         // 2. Parcourir les adhésions, la plus ancienne d'abord : un mois de passage d'une adhésion
         //    à l'autre est dû au titre de la première.
         $limite = new \DateTimeImmutable('last day of this month');
-        $resultat = ['creees' => 0, 'total' => 0.0, 'reglees' => 0, 'conservees' => 0, 'sans_tarif' => []];
+        $resultat = ['creees' => 0, 'total' => 0.0, 'reglees' => 0, 'exemptees' => 0, 'conservees' => 0, 'sans_tarif' => []];
         $adhesions = $b->fetchAllAssociative(
-            'select id, association_id, categorie, lower(periode) as debut, upper(periode) - 1 as fin
-             from adhesion.adhesion where membre_id = :m order by lower(periode)', ['m' => $personne]);
+            "select a.id, a.association_id, a.categorie, a.exemption, lower(a.periode) as debut, upper(a.periode) - 1 as fin
+             from adhesion.adhesion a join adhesion.categorie k on k.code = a.categorie
+             where a.membre_id = :m and k.cotisation = 'periodique' order by lower(a.periode)", ['m' => $personne]);
         foreach ($adhesions as $a) {
             $fin = $a['fin'] ? min(new \DateTimeImmutable($a['fin']), $limite) : $limite;
             $jour = new \DateTimeImmutable($a['debut']);
@@ -84,6 +86,12 @@ final class CalculCotisations
                 $debut = $jour->modify($annuelle ? 'first day of january' : 'first day of this month');
                 $finPeriode = $annuelle ? $jour->modify('last day of december') : $jour->modify('last day of this month');
                 $jour = $finPeriode->modify('+1 day');
+                if (!$tarif && $a['exemption']) {
+                    $tarif = ['id' => null, 'montant' => '0', 'periodicite' => 'annuelle'];  // exempté : une ligne par an suffit
+                    $debut = $debut->modify('first day of january');
+                    $finPeriode = $finPeriode->modify('last day of december');
+                    $jour = $finPeriode->modify('+1 day');
+                }
                 if (!$tarif) {
                     $resultat['sans_tarif'][] = [$a['association_id'], $a['categorie'], $debut->format('Y-m')];
                     continue;
@@ -98,11 +106,16 @@ final class CalculCotisations
                 }
                 $cotisation = (string) Uuid::v7();
                 $b->executeStatement(
-                    "insert into adhesion.cotisation (id, adhesion_id, periode, montant, tarif_id, calculee)
-                     values (:id, :a, daterange(cast(:d as date), cast(:f as date), '[]'), :montant, :t, true)",
+                    "insert into adhesion.cotisation (id, adhesion_id, periode, montant, tarif_id, gratuite, motif_gratuite, calculee)
+                     values (:id, :a, daterange(cast(:d as date), cast(:f as date), '[]'), :montant, :t, :g, :motif, true)",
                     ['id' => $cotisation, 'a' => $a['id'], 'd' => $debut->format('Y-m-d'), 'f' => $finPeriode->format('Y-m-d'),
-                     'montant' => $tarif['montant'], 't' => $tarif['id']]);
+                     'montant' => $a['exemption'] ? '0' : $tarif['montant'], 't' => $tarif['id'],
+                     'g' => $a['exemption'] ? 'true' : 'false', 'motif' => $a['exemption']]);
                 ++$resultat['creees'];
+                if ($a['exemption']) {
+                    ++$resultat['exemptees'];
+                    continue;
+                }
                 $resultat['total'] += (float) $tarif['montant'];
                 if ($regleesJusquau && $finPeriode <= $regleesJusquau && (float) $tarif['montant'] > 0) {
                     $paiement = (string) Uuid::v7();

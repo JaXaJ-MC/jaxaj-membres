@@ -43,9 +43,15 @@ class Organisation
     #[Groups(['organisation:lire'])]
     private ?Organisation $parent = null;
 
+    /** Associations JaXaJ : club (mère et chapitres) ou evenementiel (Productions). */
+    #[ORM\Column(nullable: true)]
+    #[Groups(['organisation:lire'])]
+    private ?string $volet = null;
+
     public function getId(): Uuid { return $this->id; }
     public function getNom(): string { return $this->nom; }
     public function getSigle(): ?string { return $this->sigle; }
     public function getGenre(): string { return $this->genre; }
     public function getParent(): ?Organisation { return $this->parent; }
+    public function getVolet(): ?string { return $this->volet; }
 }
