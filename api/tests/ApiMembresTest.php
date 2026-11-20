@@ -126,7 +126,9 @@ class ApiMembresTest extends WebTestCase
         self::assertResponseStatusCodeSame(201);
 
         // Une fiche du jour, il la relit en entier et peut la corriger ; une ancienne, non.
-        self::assertSame('martin@example.org', $this->lire('/api/personnes/'.$nouveau['id'], $accueil)['email']);
+        $fiche = $this->lire('/api/personnes/'.$nouveau['id'], $accueil);
+        self::assertSame('martin@example.org', $fiche['email']);
+        self::assertTrue($fiche['detail']);  // signale à l'interface que le détail est visible
         $this->envoyer('PATCH', '/api/personnes/'.$nouveau['id'], ['email' => 'p.martin@example.org'], $accueil);
         self::assertResponseIsSuccessful();
         $this->envoyer('PATCH', '/api/personnes/'.$id, ['nom' => 'Dupont'], $accueil);
@@ -534,7 +536,9 @@ class ApiMembresTest extends WebTestCase
 
         // Avec l'accueil en plus : tout le monde, le détail du Béarn seulement (et des fiches du jour).
         $lesDeux = $this->jeton(['membres:gestion:'.$bearn, 'membres:accueil:'.$prod]);
-        self::assertArrayNotHasKey('telephone', $this->lire('/api/personnes/'.$basque, $lesDeux));
+        $fiche = $this->lire('/api/personnes/'.$basque, $lesDeux);
+        self::assertArrayNotHasKey('telephone', $fiche);
+        self::assertArrayNotHasKey('detail', $fiche);
         self::assertSame('0611223344', $this->lire('/api/personnes/'.$ancien, $lesDeux)['telephone']);
     }
 }

@@ -189,4 +189,8 @@ class Personne
 
         return '' === $v ? null : $v;
     }
+
+    /** Présent seulement avec le détail : dit à l'interface que les coordonnées sont visibles. */
+    #[Groups(['personne:detail'])]
+    public function isDetail(): bool { return true; }
 }
