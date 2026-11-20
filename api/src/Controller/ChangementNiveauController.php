@@ -49,7 +49,11 @@ final class ChangementNiveauController extends AbstractController
         $nouvelle->setAuTitreDe($ancienne->getAuTitreDe());
         $nouvelle->setDebut($date);
         $nouvelle->setFin($periode->fin);
+        $nouvelle->setExemption($ancienne->getExemption());  // l'exemption suit le changement de niveau
         $this->denyAccessUnlessGranted(DroitsMembres::ECRIRE_ADHESION, $nouvelle);
+        if (!$nouvelle->isCategorieDuVolet()) {
+            return $this->json(['detail' => 'Ce niveau n\'existe pas dans cette association (club ou événementiel).'], 422);
+        }
 
         $em->wrapInTransaction(function () use ($em, $ancienne, $nouvelle, $date) {
             // D'abord clore l'ancienne, puis créer la nouvelle : la base refuse tout chevauchement.
