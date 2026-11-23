@@ -159,10 +159,10 @@ class ApiMembresTest extends WebTestCase
         $patch = $this->envoyer('POST', '/api/adhesions', $base + ['categorie' => '/api/categories/full_patch', 'debut' => '2027-04-01'], $admin);
         self::assertResponseStatusCodeSame(201);
 
-        // Chevauchement refusé par la base, rendu en 409.
+        // Chevauchement refusé, avec l'adhésion qui gêne.
         $conflit = $this->envoyer('POST', '/api/adhesions', $base + ['categorie' => '/api/categories/support', 'debut' => '2027-03-15'], $admin);
-        self::assertResponseStatusCodeSame(409);
-        self::assertStringContainsString('Chevauchement', $conflit['detail']);
+        self::assertResponseStatusCodeSame(422);
+        self::assertStringContainsString('déjà une adhésion Suiveur à JaXaJ MC Béarn du 01/01/2027 au 31/03/2027', $conflit['detail']);
 
         // Association qui n'est pas une association JaXaJ : refusée.
         $this->envoyer('POST', '/api/adhesions', ['association' => '/api/organisations/'.$this->association('JaXaJ MC').'-x'] + $base + ['categorie' => '/api/categories/support'], $admin);
@@ -297,8 +297,8 @@ class ApiMembresTest extends WebTestCase
         // Un seul président à la fois : refusé tant que le mandat en cours n'est pas terminé.
         $nouveau = ['personne' => '/api/personnes/'.$b, 'organisation' => '/api/organisations/'.$bearn, 'role' => 'president', 'debut' => '2027-01-16'];
         $conflit = $this->envoyer('POST', '/api/roles', $nouveau, $admin);
-        self::assertResponseStatusCodeSame(409);
-        self::assertStringContainsString('un seul président', $conflit['detail']);
+        self::assertResponseStatusCodeSame(422);
+        self::assertStringContainsString('Un seul président(e) à la fois à JaXaJ MC Béarn : Jean Lassalle l\'est déjà depuis le 17/01/2026, sans date de fin', $conflit['detail']);
         $fin = $this->envoyer('PATCH', '/api/roles/'.$president['id'], ['fin' => '2027-01-15'], $admin);
         self::assertSame('2027-01-15', substr($fin['fin'], 0, 10));
         $this->envoyer('POST', '/api/roles', $nouveau, $admin);
@@ -309,7 +309,7 @@ class ApiMembresTest extends WebTestCase
         $this->envoyer('POST', '/api/roles', $sergent, $admin);
         self::assertResponseStatusCodeSame(201);
         $this->envoyer('POST', '/api/roles', ['personne' => '/api/personnes/'.$b] + $sergent, $admin);
-        self::assertResponseStatusCodeSame(409);
+        self::assertResponseStatusCodeSame(422);
         $this->envoyer('POST', '/api/roles', ['role' => 'chef_de_file'] + $sergent, $admin);
         self::assertResponseStatusCodeSame(201);
 
@@ -348,7 +348,7 @@ class ApiMembresTest extends WebTestCase
         // Adhésion reprise aux dates approximatives : la nouvelle saisie la recouvre.
         $reprise = $this->envoyer('POST', '/api/adhesions', $base + ['debut' => '2009-01-01', 'fin' => '2018-12-31'], $admin);
         $this->envoyer('POST', '/api/adhesions', $base + ['debut' => '2009-10-17', 'fin' => '2025-12-31'], $admin);
-        self::assertResponseStatusCodeSame(409);
+        self::assertResponseStatusCodeSame(422);
 
         // On corrige ses dates, y compris en avançant le début au-delà de l'ancienne fin.
         $corrigee = $this->envoyer('PATCH', '/api/adhesions/'.$reprise['id'], ['debut' => '2019-06-01', 'fin' => '2020-12-31'], $gestion);

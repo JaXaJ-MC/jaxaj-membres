@@ -14,6 +14,7 @@ use App\Filter\Egal;
 use Doctrine\ORM\Mapping as ORM;
 use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Uid\Uuid;
+use App\Validator\SansChevauchement;
 use Symfony\Component\Validator\Constraints as Assert;
 
 /**
@@ -45,6 +46,7 @@ use Symfony\Component\Validator\Constraints as Assert;
     normalizationContext: ['groups' => ['role:lire']],
     denormalizationContext: ['groups' => ['role:ecrire', 'role:modifier']],
 )]
+#[SansChevauchement]
 class Representation
 {
     public const ROLES = ['president', 'vice_president', 'tresorier', 'secretaire', 'sergent_armes', 'chef_de_file', 'representant'];

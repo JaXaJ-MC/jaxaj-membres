@@ -15,6 +15,7 @@ use Doctrine\ORM\Event\PreRemoveEventArgs;
 use Doctrine\ORM\Mapping as ORM;
 use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Uid\Uuid;
+use App\Validator\SansChevauchement;
 use Symfony\Component\Validator\Constraints as Assert;
 
 /**
@@ -45,6 +46,7 @@ use Symfony\Component\Validator\Constraints as Assert;
     normalizationContext: ['groups' => ['adhesion:lire']],
     denormalizationContext: ['groups' => ['adhesion:ecrire', 'adhesion:modifier']],
 )]
+#[SansChevauchement]
 class Adhesion
 {
     #[ORM\Id]
