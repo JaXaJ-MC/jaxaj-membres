@@ -559,4 +559,21 @@ class ApiMembresTest extends WebTestCase
         self::assertSame([(int) date('Y') - 2022 + 1 + $mois, 0], [$r['creees'], $r['conservees']]);
         self::assertSame(number_format(60 * $mois, 2, '.', ''), $r['total']);
     }
+
+    /** Membre de plusieurs associations, ne cotise qu'à une : les autres exemptées ne bloquent rien. */
+    public function testExemptionNeBloquePasLaCotisationAilleurs(): void
+    {
+        $admin = $this->jeton(['membres:admin']);
+        $id = $this->envoyer('POST', '/api/personnes', ['nom' => 'Courtade', 'prenom' => 'Greg'], $admin)['id'];
+        $adherer = fn (string $asso, string $debut, ?string $exemption = null) => $this->envoyer('POST', '/api/adhesions',
+            ['membre' => '/api/personnes/'.$id, 'association' => '/api/organisations/'.$this->association($asso),
+             'categorie' => '/api/categories/full_patch', 'debut' => $debut, 'exemption' => $exemption], $admin);
+        $adherer('JaXaJ MC', '2020-01-01', 'Cotise à Euskadi');      // ouverte, plus de tarif pour la mère
+        $adherer('JaXaJ MC Béarn', '2025-01-01', 'Cotise à Euskadi');  // exemptée, tarif 2026 existant
+        $adherer('JaXaJ MC Euskadi', '2026-01-01');
+        $r = $this->envoyer('POST', '/api/personnes/'.$id.'/cotisations/calcul', [], $admin);
+        $mois = (int) date('n') + 12 * ((int) date('Y') - 2026);
+        self::assertSame(number_format(60 * $mois, 2, '.', ''), $r['total']);  // Euskadi, chaque mois
+        self::assertSame([2 * $mois, $mois, []], [$r['creees'], $r['exemptees'], $r['sans_tarif']]);  // + Béarn gratuit
+    }
 }

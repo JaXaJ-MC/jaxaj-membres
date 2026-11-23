@@ -12,7 +12,8 @@ use Symfony\Component\Uid\Uuid;
  * vigueur pour sa catégorie et son association donne la période due, l'année civile pour un
  * tarif annuel, le mois sinon (l'annuel l'emporte si les deux existent). Une période déjà
  * couverte par une cotisation de la personne dans le même volet (club ou événementiel) est
- * laissée telle quelle ; sans tarif, elle est signalée. Seules les catégories à cotisation périodique sont calculées ; une adhésion exemptée
+ * laissée telle quelle (une cotisation gratuite ne couvre rien pour les autres adhésions) ; sans
+ * tarif, elle est signalée, sauf pour une adhésion exemptée. Seules les catégories à cotisation périodique sont calculées ; une adhésion exemptée
  * reçoit des cotisations gratuites portant le motif de l'exemption.
  *
  * Les cotisations créées sont marquées « calculée » : un nouveau calcul les remplace, sauf
@@ -86,21 +87,22 @@ final class CalculCotisations
                 $debut = $jour->modify($annuelle ? 'first day of january' : 'first day of this month');
                 $finPeriode = $annuelle ? $jour->modify('last day of december') : $jour->modify('last day of this month');
                 $jour = $finPeriode->modify('+1 day');
-                if (!$tarif && $a['exemption']) {
-                    $tarif = ['id' => null, 'montant' => '0', 'periodicite' => 'annuelle'];  // exempté : une ligne par an suffit
-                    $debut = $debut->modify('first day of january');
-                    $finPeriode = $finPeriode->modify('last day of december');
-                    $jour = $finPeriode->modify('+1 day');
-                }
                 if (!$tarif) {
-                    $resultat['sans_tarif'][] = [$a['association_id'], $a['categorie'], $debut->format('Y-m')];
+                    if (!$a['exemption']) {  // exempté : rien à payer, le tarif manquant ne gêne pas
+                        $resultat['sans_tarif'][] = [$a['association_id'], $a['categorie'], $debut->format('Y-m')];
+                    }
                     continue;
                 }
+                // Période déjà couverte : par cette adhésion, ou, pour une adhésion qui paie, par une
+                // cotisation payante d'une autre adhésion du même volet (on ne cotise qu'une fois au club).
+                // Une cotisation gratuite (exemption) ne couvre rien pour les autres.
                 $deja = $b->fetchOne(
                     'select 1 from adhesion.cotisation c join adhesion.adhesion a on a.id = c.adhesion_id
                      join adhesion.categorie k on k.code = a.categorie
-                     where a.membre_id = :m and k.volet = :v and c.periode && daterange(cast(:d as date), cast(:f as date), \'[]\')',
-                    ['m' => $personne, 'v' => $a['volet'], 'd' => $debut->format('Y-m-d'), 'f' => $finPeriode->format('Y-m-d')]);
+                     where c.periode && daterange(cast(:d as date), cast(:f as date), \'[]\')
+                       and (a.id = :adh or (not cast(:exempte as boolean) and a.membre_id = :m and k.volet = :v and not c.gratuite))',
+                    ['adh' => $a['id'], 'exempte' => $a['exemption'] ? 'true' : 'false', 'm' => $personne, 'v' => $a['volet'],
+                     'd' => $debut->format('Y-m-d'), 'f' => $finPeriode->format('Y-m-d')]);
                 if ($deja) {
                     ++$resultat['conservees'];
                     continue;
