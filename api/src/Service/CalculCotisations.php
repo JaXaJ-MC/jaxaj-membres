@@ -11,10 +11,10 @@ use Symfony\Component\Uid\Uuid;
  * Pour chaque adhésion, de son début à sa fin (au plus tard le mois en cours) : le tarif en
  * vigueur pour sa catégorie et son association donne la période due, l'année civile pour un
  * tarif annuel, le mois sinon (l'annuel l'emporte si les deux existent). Une période déjà
- * couverte par une cotisation de la personne dans le même volet (club ou événementiel) est
- * laissée telle quelle (une cotisation gratuite ne couvre rien pour les autres adhésions) ; sans
- * tarif, elle est signalée, sauf pour une adhésion exemptée. Seules les catégories à cotisation périodique sont calculées ; une adhésion exemptée
- * reçoit des cotisations gratuites portant le motif de l'exemption.
+ * couverte par cette adhésion, ou par une cotisation payante d'une autre adhésion du même volet
+ * (club ou événementiel), est laissée telle quelle ; sans tarif, elle est signalée. Seules les
+ * catégories à cotisation périodique sont calculées. Une adhésion exemptée reçoit une seule
+ * cotisation gratuite, sur toute sa durée, portant le motif de l'exemption.
  *
  * Les cotisations créées sont marquées « calculée » : un nouveau calcul les remplace, sauf
  * celles qu'un vrai paiement a réglées. En option, celles qui se terminent au plus tard à une
@@ -74,6 +74,10 @@ final class CalculCotisations
              from adhesion.adhesion a join adhesion.categorie k on k.code = a.categorie
              where a.membre_id = :m and k.cotisation = 'periodique' order by lower(a.periode)", ['m' => $personne]);
         foreach ($adhesions as $a) {
+            if ($a['exemption']) {
+                $this->exemptee($a, $resultat);
+                continue;
+            }
             $fin = $a['fin'] ? min(new \DateTimeImmutable($a['fin']), $limite) : $limite;
             $jour = new \DateTimeImmutable($a['debut']);
             while ($jour <= $fin) {
@@ -88,20 +92,18 @@ final class CalculCotisations
                 $finPeriode = $annuelle ? $jour->modify('last day of december') : $jour->modify('last day of this month');
                 $jour = $finPeriode->modify('+1 day');
                 if (!$tarif) {
-                    if (!$a['exemption']) {  // exempté : rien à payer, le tarif manquant ne gêne pas
-                        $resultat['sans_tarif'][] = [$a['association_id'], $a['categorie'], $debut->format('Y-m')];
-                    }
+                    $resultat['sans_tarif'][] = [$a['association_id'], $a['categorie'], $debut->format('Y-m')];
                     continue;
                 }
-                // Période déjà couverte : par cette adhésion, ou, pour une adhésion qui paie, par une
-                // cotisation payante d'une autre adhésion du même volet (on ne cotise qu'une fois au club).
-                // Une cotisation gratuite (exemption) ne couvre rien pour les autres.
+                // Période déjà couverte : par cette adhésion, ou par une cotisation payante d'une autre
+                // adhésion du même volet (on ne cotise qu'une fois au club). Une cotisation gratuite
+                // (exemption) ne couvre rien pour les autres.
                 $deja = $b->fetchOne(
                     'select 1 from adhesion.cotisation c join adhesion.adhesion a on a.id = c.adhesion_id
                      join adhesion.categorie k on k.code = a.categorie
                      where c.periode && daterange(cast(:d as date), cast(:f as date), \'[]\')
-                       and (a.id = :adh or (not cast(:exempte as boolean) and a.membre_id = :m and k.volet = :v and not c.gratuite))',
-                    ['adh' => $a['id'], 'exempte' => $a['exemption'] ? 'true' : 'false', 'm' => $personne, 'v' => $a['volet'],
+                       and (a.id = :adh or (a.membre_id = :m and k.volet = :v and not c.gratuite))',
+                    ['adh' => $a['id'], 'm' => $personne, 'v' => $a['volet'],
                      'd' => $debut->format('Y-m-d'), 'f' => $finPeriode->format('Y-m-d')]);
                 if ($deja) {
                     ++$resultat['conservees'];
@@ -112,13 +114,8 @@ final class CalculCotisations
                     "insert into adhesion.cotisation (id, adhesion_id, periode, montant, tarif_id, gratuite, motif_gratuite, calculee)
                      values (:id, :a, daterange(cast(:d as date), cast(:f as date), '[]'), :montant, :t, :g, :motif, true)",
                     ['id' => $cotisation, 'a' => $a['id'], 'd' => $debut->format('Y-m-d'), 'f' => $finPeriode->format('Y-m-d'),
-                     'montant' => $a['exemption'] ? '0' : $tarif['montant'], 't' => $tarif['id'],
-                     'g' => $a['exemption'] ? 'true' : 'false', 'motif' => $a['exemption']]);
+                     'montant' => $tarif['montant'], 't' => $tarif['id'], 'g' => 'false', 'motif' => null]);
                 ++$resultat['creees'];
-                if ($a['exemption']) {
-                    ++$resultat['exemptees'];
-                    continue;
-                }
                 $resultat['total'] += (float) $tarif['montant'];
                 if ($regleesJusquau && $finPeriode <= $regleesJusquau && (float) $tarif['montant'] > 0) {
                     $paiement = (string) Uuid::v7();
@@ -134,6 +131,31 @@ final class CalculCotisations
         $resultat['sans_tarif'] = $this->regrouper($resultat['sans_tarif']);
 
         return $resultat;
+    }
+
+    /**
+     * Adhésion exemptée : une seule cotisation gratuite, portant le motif, sur toute sa durée (en
+     * cours : jusqu'à la fin de l'année, prolongée au calcul suivant). Elle sert au contrôle d'accès
+     * et ne couvre rien pour les autres adhésions. Rien si l'adhésion a déjà des cotisations.
+     */
+    private function exemptee(array $a, array &$resultat): void
+    {
+        $debut = $a['debut'];
+        $fin = $a['fin'] ?? (new \DateTimeImmutable('last day of december this year'))->format('Y-m-d');
+        if ($fin < $debut) {
+            return;  // adhésion qui commence après cette année
+        }
+        if ($this->base->fetchOne('select 1 from adhesion.cotisation where adhesion_id = :a', ['a' => $a['id']])) {
+            ++$resultat['conservees'];
+
+            return;
+        }
+        $this->base->executeStatement(
+            "insert into adhesion.cotisation (id, adhesion_id, periode, montant, gratuite, motif_gratuite, calculee)
+             values (:id, :a, daterange(cast(:d as date), cast(:f as date), '[]'), 0, true, :motif, true)",
+            ['id' => (string) Uuid::v7(), 'a' => $a['id'], 'd' => $debut, 'f' => $fin, 'motif' => $a['exemption']]);
+        ++$resultat['creees'];
+        ++$resultat['exemptees'];
     }
 
     /** Mois sans tarif regroupés en plages : même association, même catégorie, mois consécutifs. */

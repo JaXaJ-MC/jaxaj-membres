@@ -465,9 +465,11 @@ class ApiMembresTest extends WebTestCase
         self::assertSame('Membre du bureau (statuts)', $adhesion['exemption']);
         $r = $this->envoyer('POST', '/api/personnes/'.$id.'/cotisations/calcul', ['regleesJusquau' => '2025-12-31'], $admin);
         $annees = (int) date('Y') - 2022 + 1;
-        self::assertSame([$annees, $annees, 0, '0.00', []], [$r['creees'], $r['exemptees'], $r['reglees'], $r['total'], $r['sans_tarif']]);
+        self::assertSame([1, 1, 0, '0.00', []], [$r['creees'], $r['exemptees'], $r['reglees'], $r['total'], $r['sans_tarif']]);
         $etat = $this->lire('/api/personnes/'.$id.'/cotisations', $admin);
-        self::assertSame([true, true, 'Membre du bureau (statuts)', '2022-01-01'], [$etat[0]['gratuite'], $etat[0]['aJour'], $etat[0]['motifGratuite'], end($etat)['debut']]);
+        self::assertCount(1, $etat);  // une seule ligne, sur toute la durée
+        self::assertSame([true, true, 'Membre du bureau (statuts)', '2022-04-01', date('Y').'-12-31'],
+            [$etat[0]['gratuite'], $etat[0]['aJour'], $etat[0]['motifGratuite'], $etat[0]['debut'], $etat[0]['fin']]);
 
         // La liste donne toutes les adhésions du mois, pas seulement la principale.
         $ligne = array_values(array_filter($this->lire('/api/liste', $admin)['personnes'], fn ($l) => $l['id'] === $id))[0];
@@ -556,7 +558,7 @@ class ApiMembresTest extends WebTestCase
             'categorie' => '/api/categories/full_patch', 'debut' => '2026-01-01'], $admin);
         $r = $this->envoyer('POST', '/api/personnes/'.$id.'/cotisations/calcul', [], $admin);
         $mois = (int) date('n') + 12 * ((int) date('Y') - 2026);
-        self::assertSame([(int) date('Y') - 2022 + 1 + $mois, 0], [$r['creees'], $r['conservees']]);
+        self::assertSame([1 + $mois, 0], [$r['creees'], $r['conservees']]);
         self::assertSame(number_format(60 * $mois, 2, '.', ''), $r['total']);
     }
 
@@ -574,6 +576,6 @@ class ApiMembresTest extends WebTestCase
         $r = $this->envoyer('POST', '/api/personnes/'.$id.'/cotisations/calcul', [], $admin);
         $mois = (int) date('n') + 12 * ((int) date('Y') - 2026);
         self::assertSame(number_format(60 * $mois, 2, '.', ''), $r['total']);  // Euskadi, chaque mois
-        self::assertSame([2 * $mois, $mois, []], [$r['creees'], $r['exemptees'], $r['sans_tarif']]);  // + Béarn gratuit
+        self::assertSame([2 + $mois, 2, []], [$r['creees'], $r['exemptees'], $r['sans_tarif']]);  // + une ligne gratuite par exemption
     }
 }
