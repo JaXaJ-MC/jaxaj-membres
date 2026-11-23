@@ -10,7 +10,9 @@ use Doctrine\DBAL\Connection;
  * cotisation de ce mois. Une seule requête : la liste complète tient en quelques dizaines de Ko.
  *
  * Adhésion principale : celle qui couvre une partie du mois, en préférant une catégorie du
- * club (full patch, suiveur…) au public, puis la plus récente.
+ * club (full patch, suiveur…) au public, puis une adhésion qui paie à une adhésion exemptée
+ * (membre de plusieurs chapitres, on cotise à un seul), puis la plus récente. C'est elle que
+ * « Payé ce mois-ci » encaisse.
  */
 final class EtatDuMois
 {
@@ -39,7 +41,7 @@ final class EtatDuMois
               join adhesion.categorie k on k.code = a.categorie
               cross join m
               where a.periode && daterange(m.d, m.f) and {asso_adh}
-              order by a.membre_id, k.membre_club desc, lower(a.periode) desc
+              order by a.membre_id, k.membre_club desc, a.exemption is null desc, lower(a.periode) desc
             ),
             derniere as (
               select membre_id, max(upper(periode)) - 1 as fin

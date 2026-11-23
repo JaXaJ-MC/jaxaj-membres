@@ -571,11 +571,15 @@ class ApiMembresTest extends WebTestCase
             ['membre' => '/api/personnes/'.$id, 'association' => '/api/organisations/'.$this->association($asso),
              'categorie' => '/api/categories/full_patch', 'debut' => $debut, 'exemption' => $exemption], $admin);
         $adherer('JaXaJ MC', '2020-01-01', 'Cotise à Euskadi');      // ouverte, plus de tarif pour la mère
-        $adherer('JaXaJ MC Béarn', '2025-01-01', 'Cotise à Euskadi');  // exemptée, tarif 2026 existant
+        $adherer('JaXaJ MC Béarn', '2026-02-01', 'Cotise à Euskadi');  // exemptée, plus récente qu'Euskadi
         $adherer('JaXaJ MC Euskadi', '2026-01-01');
         $r = $this->envoyer('POST', '/api/personnes/'.$id.'/cotisations/calcul', [], $admin);
         $mois = (int) date('n') + 12 * ((int) date('Y') - 2026);
         self::assertSame(number_format(60 * $mois, 2, '.', ''), $r['total']);  // Euskadi, chaque mois
         self::assertSame([2 + $mois, 2, []], [$r['creees'], $r['exemptees'], $r['sans_tarif']]);  // + une ligne gratuite par exemption
+
+        // Dans la liste, l'état du mois est celui d'Euskadi, où il paie, pas celui du Béarn exempté.
+        $ligne = array_values(array_filter($this->lire('/api/liste', $admin)['personnes'], fn ($l) => $l['id'] === $id))[0];
+        self::assertSame([$this->association('JaXaJ MC Euskadi'), 'a_payer'], [$ligne['association'], $ligne['mois']['statut']]);
     }
 }
