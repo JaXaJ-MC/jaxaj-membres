@@ -49,7 +49,7 @@ use Symfony\Component\Validator\Constraints as Assert;
 #[SansChevauchement]
 class Representation
 {
-    public const ROLES = ['president', 'vice_president', 'tresorier', 'secretaire', 'sergent_armes', 'chef_de_file', 'representant'];
+    public const ROLES = ['president', 'vice_president', 'tresorier', 'vice_tresorier', 'secretaire', 'sergent_armes', 'chef_de_file', 'representant'];
 
     #[ORM\Id]
     #[ORM\Column(type: 'uuid')]
@@ -69,7 +69,7 @@ class Representation
     private ?Organisation $organisation = null;
 
     #[ORM\Column]
-    #[Assert\Choice(choices: self::ROLES, message: 'Rôle inconnu : president, vice_president, tresorier, secretaire, sergent_armes, chef_de_file ou representant.')]
+    #[Assert\Choice(choices: self::ROLES, message: 'Rôle inconnu : president, vice_president, tresorier, vice_tresorier, secretaire, sergent_armes, chef_de_file ou representant.')]
     #[Groups(['role:lire', 'role:ecrire'])]
     private string $role = 'representant';
 

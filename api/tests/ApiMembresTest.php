@@ -310,13 +310,15 @@ class ApiMembresTest extends WebTestCase
         self::assertResponseStatusCodeSame(201);
         $this->envoyer('POST', '/api/roles', ['personne' => '/api/personnes/'.$b] + $sergent, $admin);
         self::assertResponseStatusCodeSame(422);
+        $this->envoyer('POST', '/api/roles', ['role' => 'vice_tresorier'] + $sergent, $admin);
+        self::assertResponseStatusCodeSame(201);
         $this->envoyer('POST', '/api/roles', ['role' => 'chef_de_file'] + $sergent, $admin);
         self::assertResponseStatusCodeSame(201);
 
         // Rôle inconnu : refusé. Historique par personne et par association.
         $this->envoyer('POST', '/api/roles', ['role' => 'roi'] + $nouveau, $admin);
         self::assertResponseStatusCodeSame(422);
-        self::assertCount(4, $this->lire('/api/roles?organisation='.$bearn, $admin));
+        self::assertCount(5, $this->lire('/api/roles?organisation='.$bearn, $admin));
         self::assertSame(['tresorier', 'president'], array_column($this->lire('/api/roles?personne='.$b, $admin), 'role'));
 
         // Les rôles en cours (aujourd'hui) apparaissent dans la liste.

@@ -10,7 +10,7 @@ use Symfony\Component\Validator\ConstraintValidator;
 
 final class SansChevauchementValidator extends ConstraintValidator
 {
-    private const ROLES = ['president' => 'président(e)', 'vice_president' => 'vice-président(e)', 'tresorier' => 'trésorier(ère)',
+    private const ROLES = ['president' => 'président(e)', 'vice_president' => 'vice-président(e)', 'tresorier' => 'trésorier(ère)', 'vice_tresorier' => 'vice-trésorier(ère)',
         'secretaire' => 'secrétaire', 'sergent_armes' => 'sergent d\'armes', 'chef_de_file' => 'chef de file'];
 
     public function __construct(private Connection $base) {}

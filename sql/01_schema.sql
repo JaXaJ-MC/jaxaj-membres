@@ -109,7 +109,7 @@ create table annuaire.representation (
   personne_id     uuid not null references annuaire.personne (id) on delete cascade,
   organisation_id uuid not null references annuaire.organisation (id) on delete cascade,
   role            text not null constraint representation_role_check check (role in
-                    ('president', 'vice_president', 'tresorier', 'secretaire',
+                    ('president', 'vice_president', 'tresorier', 'vice_tresorier', 'secretaire',
                      'sergent_armes', 'chef_de_file', 'representant')),
   periode         daterange not null default daterange(current_date, null),
   cree_le         timestamptz not null default now(),
