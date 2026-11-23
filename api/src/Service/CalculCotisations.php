@@ -11,8 +11,8 @@ use Symfony\Component\Uid\Uuid;
  * Pour chaque adhésion, de son début à sa fin (au plus tard le mois en cours) : le tarif en
  * vigueur pour sa catégorie et son association donne la période due, l'année civile pour un
  * tarif annuel, le mois sinon (l'annuel l'emporte si les deux existent). Une période déjà
- * couverte par une cotisation de la personne est laissée telle quelle ; sans tarif, elle est
- * signalée. Seules les catégories à cotisation périodique sont calculées ; une adhésion exemptée
+ * couverte par une cotisation de la personne dans le même volet (club ou événementiel) est
+ * laissée telle quelle ; sans tarif, elle est signalée. Seules les catégories à cotisation périodique sont calculées ; une adhésion exemptée
  * reçoit des cotisations gratuites portant le motif de l'exemption.
  *
  * Les cotisations créées sont marquées « calculée » : un nouveau calcul les remplace, sauf
@@ -69,7 +69,7 @@ final class CalculCotisations
         $limite = new \DateTimeImmutable('last day of this month');
         $resultat = ['creees' => 0, 'total' => 0.0, 'reglees' => 0, 'exemptees' => 0, 'conservees' => 0, 'sans_tarif' => []];
         $adhesions = $b->fetchAllAssociative(
-            "select a.id, a.association_id, a.categorie, a.exemption, lower(a.periode) as debut, upper(a.periode) - 1 as fin
+            "select a.id, a.association_id, a.categorie, a.exemption, k.volet, lower(a.periode) as debut, upper(a.periode) - 1 as fin
              from adhesion.adhesion a join adhesion.categorie k on k.code = a.categorie
              where a.membre_id = :m and k.cotisation = 'periodique' order by lower(a.periode)", ['m' => $personne]);
         foreach ($adhesions as $a) {
@@ -98,8 +98,9 @@ final class CalculCotisations
                 }
                 $deja = $b->fetchOne(
                     'select 1 from adhesion.cotisation c join adhesion.adhesion a on a.id = c.adhesion_id
-                     where a.membre_id = :m and c.periode && daterange(cast(:d as date), cast(:f as date), \'[]\')',
-                    ['m' => $personne, 'd' => $debut->format('Y-m-d'), 'f' => $finPeriode->format('Y-m-d')]);
+                     join adhesion.categorie k on k.code = a.categorie
+                     where a.membre_id = :m and k.volet = :v and c.periode && daterange(cast(:d as date), cast(:f as date), \'[]\')',
+                    ['m' => $personne, 'v' => $a['volet'], 'd' => $debut->format('Y-m-d'), 'f' => $finPeriode->format('Y-m-d')]);
                 if ($deja) {
                     ++$resultat['conservees'];
                     continue;

@@ -543,4 +543,20 @@ class ApiMembresTest extends WebTestCase
         self::assertArrayNotHasKey('detail', $fiche);
         self::assertSame('0611223344', $this->lire('/api/personnes/'.$ancien, $lesDeux)['telephone']);
     }
+
+    /** Club et événementiel se calculent chacun de leur côté : l'annuel de Productions ne couvre pas les mois d'un chapitre. */
+    public function testCalculClubEtEvenementielIndependants(): void
+    {
+        $admin = $this->jeton(['membres:admin']);
+        $id = $this->envoyer('POST', '/api/personnes', ['nom' => 'Courtade'], $admin)['id'];
+        $p = ['membre' => '/api/personnes/'.$id];
+        $this->envoyer('POST', '/api/adhesions', $p + ['association' => '/api/organisations/'.$this->association('JaXaJ Productions'),
+            'categorie' => '/api/categories/adherent', 'debut' => '2022-04-01', 'exemption' => 'Bureau (statuts)'], $admin);
+        $this->envoyer('POST', '/api/adhesions', $p + ['association' => '/api/organisations/'.$this->association('JaXaJ MC Euskadi'),
+            'categorie' => '/api/categories/full_patch', 'debut' => '2026-01-01'], $admin);
+        $r = $this->envoyer('POST', '/api/personnes/'.$id.'/cotisations/calcul', [], $admin);
+        $mois = (int) date('n') + 12 * ((int) date('Y') - 2026);
+        self::assertSame([(int) date('Y') - 2022 + 1 + $mois, 0], [$r['creees'], $r['conservees']]);
+        self::assertSame(number_format(60 * $mois, 2, '.', ''), $r['total']);
+    }
 }
