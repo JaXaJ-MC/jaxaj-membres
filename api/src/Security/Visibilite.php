@@ -13,8 +13,10 @@ use Symfony\Bundle\SecurityBundle\Security;
  *                                           l'entrée) ; le détail des seules fiches créées le
  *                                           jour même, pour relire sa saisie
  *   gestion d'une association               les personnes qui ont ou ont eu une adhésion ou un
- *                                           rôle dans cette association, avec leur détail ; de
- *                                           leur historique, seulement ce qui la concerne
+ *                                           rôle dans cette association, avec leur détail et
+ *                                           tout leur historique (la mère, d'autres chapitres :
+ *                                           pour le vérifier avec elles) ; elle n'écrit que dans
+ *                                           son association
  *
  * Les droits se cumulent : accueil + gestion du Béarn voit tout le monde, avec le détail des
  * personnes du Béarn et des fiches du jour.
@@ -80,13 +82,6 @@ final class Visibilite
         return null !== $this->utilisateur()?->perimetre('accueil') && $this->creeAujourdhui($id);
     }
 
-    /** Voit cet élément d'historique (adhésion, cotisation, rôle) d'une association donnée. */
-    public function voitAssociation(?string $association): bool
-    {
-        $p = $this->perimetre();
-
-        return null === $p || ($association && in_array($association, $p, true));
-    }
 
     private function dansAssociations(string $id, array $associations): bool
     {
@@ -106,6 +101,17 @@ final class Visibilite
     {
         return (bool) $this->base->fetchOne(
             'select 1 from annuaire.personne where id = :id and cree_le >= current_date', ['id' => $id]);
+    }
+
+    /** Associations où la gestion de l'utilisateur écrit : null = toutes (admin, gestion sans périmètre). */
+    public function associationsGerees(): ?array
+    {
+        $u = $this->utilisateur();
+        if (!$u || [] === $u->perimetre('admin') || [] === $u->perimetre('gestion')) {
+            return $u ? null : [];
+        }
+
+        return $u->perimetre('gestion') ?? [];
     }
 
     /** Condition SQL « personne visible » sur une colonne d'identifiant de personne, pour les listes. */

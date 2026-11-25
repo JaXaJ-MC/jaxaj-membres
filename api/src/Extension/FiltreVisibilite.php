@@ -13,8 +13,8 @@ use App\Security\Visibilite;
 use Doctrine\ORM\QueryBuilder;
 
 /**
- * Listes de personnes, adhésions, cotisations et rôles limitées à ce que voit une gestion
- * d'association (voir Visibilite). Sans effet pour qui voit tout le monde.
+ * Listes de personnes, adhésions, cotisations et rôles limitées aux personnes que voit une
+ * gestion d'association, avec tout leur historique (voir Visibilite). Sans effet pour qui voit tout le monde.
  */
 final class FiltreVisibilite implements QueryCollectionExtensionInterface
 {
@@ -35,14 +35,16 @@ final class FiltreVisibilite implements QueryCollectionExtensionInterface
         }
         $o = $qb->getRootAliases()[0];
         $p = $noms->generateParameterName('perimetre');
+        // Personnes visibles ; leur historique (adhésions, cotisations, rôles) se voit avec elles.
+        $visible = fn (string $personne) => sprintf(
+            '%1$s in (select identity(va.membre) from %2$s va where va.association in (:%4$s))
+             or %1$s in (select identity(vr.personne) from %3$s vr where vr.organisation in (:%4$s))',
+            $personne, Adhesion::class, Representation::class, $p);
         match ($resourceClass) {
-            Personne::class => $qb->andWhere(sprintf(
-                '%1$s.id in (select identity(va.membre) from %2$s va where va.association in (:%4$s))
-                 or %1$s.id in (select identity(vr.personne) from %3$s vr where vr.organisation in (:%4$s))',
-                $o, Adhesion::class, Representation::class, $p)),
-            Adhesion::class => $qb->andWhere("$o.association in (:$p)"),
-            Cotisation::class => $qb->join("$o.adhesion", $j = $noms->generateJoinAlias('adhesion'))->andWhere("$j.association in (:$p)"),
-            Representation::class => $qb->andWhere("$o.organisation in (:$p)"),
+            Personne::class => $qb->andWhere($visible("$o.id")),
+            Adhesion::class => $qb->andWhere($visible("identity($o.membre)")),
+            Cotisation::class => $qb->join("$o.adhesion", $j = $noms->generateJoinAlias('adhesion'))->andWhere($visible("identity($j.membre)")),
+            Representation::class => $qb->andWhere($visible("identity($o.personne)")),
         };
         $qb->setParameter($p, $perimetre);
     }

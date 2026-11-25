@@ -31,11 +31,11 @@ final class CalculCotisations
      * @return array{creees: int, total: string, reglees: int, exemptees: int, conservees: int,
      *               sans_tarif: list<array{association: string, categorie: string, debut: string, fin: string}>}
      */
-    public function calculer(string $personne, ?\DateTimeImmutable $regleesJusquau, bool $simuler): array
+    public function calculer(string $personne, ?\DateTimeImmutable $regleesJusquau, bool $simuler, ?array $associations = null): array
     {
         $this->base->beginTransaction();
         try {
-            $resultat = $this->executer($personne, $regleesJusquau);
+            $resultat = $this->executer($personne, $regleesJusquau, $associations ?? null);
             $simuler ? $this->base->rollBack() : $this->base->commit();
 
             return $resultat;
@@ -45,20 +45,26 @@ final class CalculCotisations
         }
     }
 
-    private function executer(string $personne, ?\DateTimeImmutable $regleesJusquau): array
+    /** $associations : seulement les adhésions de ces associations (gestion d'une association), null = toutes. */
+    private function executer(string $personne, ?\DateTimeImmutable $regleesJusquau, ?array $associations): array
     {
         $b = $this->base;
+        $toutes = null === $associations ? 'true' : 'false';
+        $assos = '{'.implode(',', $associations ?? []).'}';
         // 1. Retirer le calcul précédent, sauf ce qu'un vrai paiement a réglé.
         $historiques = $b->fetchFirstColumn(
             'select distinct p.id from adhesion.paiement p join adhesion.reglement r on r.paiement_id = p.id
              join adhesion.cotisation c on c.id = r.cotisation_id join adhesion.adhesion a on a.id = c.adhesion_id
-             where a.membre_id = :m and c.calculee and p.reference = :h', ['m' => $personne, 'h' => self::HISTORIQUE]);
+             where a.membre_id = :m and c.calculee and p.reference = :h
+               and (cast(:toutes as boolean) or a.association_id = any (cast(:assos as uuid[])))',
+            ['m' => $personne, 'h' => self::HISTORIQUE, 'toutes' => $toutes, 'assos' => $assos]);
         $b->executeStatement(
             'delete from adhesion.cotisation c using adhesion.adhesion a
              where a.id = c.adhesion_id and a.membre_id = :m and c.calculee
+               and (cast(:toutes as boolean) or a.association_id = any (cast(:assos as uuid[])))
                and not exists (select 1 from adhesion.reglement r join adhesion.paiement p on p.id = r.paiement_id
                                where r.cotisation_id = c.id and p.reference is distinct from :h)',
-            ['m' => $personne, 'h' => self::HISTORIQUE]);
+            ['m' => $personne, 'h' => self::HISTORIQUE, 'toutes' => $toutes, 'assos' => $assos]);
         if ($historiques) {
             $b->executeStatement('delete from adhesion.paiement p where p.id = any (cast(:ids as uuid[]))
                 and not exists (select 1 from adhesion.reglement r where r.paiement_id = p.id)',
@@ -72,7 +78,9 @@ final class CalculCotisations
         $adhesions = $b->fetchAllAssociative(
             "select a.id, a.association_id, a.categorie, a.exemption, k.volet, lower(a.periode) as debut, upper(a.periode) - 1 as fin
              from adhesion.adhesion a join adhesion.categorie k on k.code = a.categorie
-             where a.membre_id = :m and k.cotisation = 'periodique' order by lower(a.periode)", ['m' => $personne]);
+             where a.membre_id = :m and k.cotisation = 'periodique'
+               and (cast(:toutes as boolean) or a.association_id = any (cast(:assos as uuid[])))
+             order by lower(a.periode)", ['m' => $personne, 'toutes' => $toutes, 'assos' => $assos]);
         foreach ($adhesions as $a) {
             if ($a['exemption']) {
                 $this->exemptee($a, $resultat);

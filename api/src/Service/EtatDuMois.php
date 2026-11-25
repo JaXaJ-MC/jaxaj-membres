@@ -29,10 +29,8 @@ final class EtatDuMois
     public function liste(\DateTimeImmutable $mois, ?string $personne = null): array
     {
         $debut = $mois->modify('first day of this month')->setTime(0, 0);
-        // Gestion d'une association : ses personnes, et d'elles seulement ce qui la concerne.
+        // Gestion d'une association : ses personnes, avec tout leur historique.
         [$visible, $parametres] = $this->visibilite->conditionPersonne('p.id');
-        $perimetre = $this->visibilite->perimetre();
-        $dansPerimetre = fn (string $colonne) => null === $perimetre ? 'true' : "$colonne = any (cast(:perimetre as uuid[]))";
         $sql = <<<'SQL'
             with m as (select cast(:debut as date) as d, cast(:fin as date) as f),
             adh as (
@@ -40,7 +38,7 @@ final class EtatDuMois
               from adhesion.adhesion a
               join adhesion.categorie k on k.code = a.categorie
               cross join m
-              where a.periode && daterange(m.d, m.f) and {asso_adh}
+              where a.periode && daterange(m.d, m.f) 
               order by a.membre_id, k.membre_club desc, a.exemption is null desc, lower(a.periode) desc
             ),
             derniere as (
@@ -63,23 +61,23 @@ final class EtatDuMois
             left join lateral (
               select json_agg(json_build_object('role', r.role, 'organisation', r.organisation_id) order by r.role) as roles
               from annuaire.representation r
-              where r.personne_id = p.id and r.periode @> current_date and {asso_role}
+              where r.personne_id = p.id and r.periode @> current_date 
             ) ro on true
             left join lateral (
               select json_agg(json_build_object('association', a.association_id, 'categorie', a.categorie) order by k.ordre) as adhesions
               from adhesion.adhesion a join adhesion.categorie k on k.code = a.categorie
-              where a.membre_id = p.id and a.periode && daterange((select d from m), (select f from m)) and {asso_adh}
+              where a.membre_id = p.id and a.periode && daterange((select d from m), (select f from m)) 
             ) ad on true
             left join lateral (
               select min(lower(a.periode)) as premier
               from adhesion.adhesion a
-              where a.membre_id = p.id and a.categorie = 'full_patch' and {asso_adh}
+              where a.membre_id = p.id and a.categorie = 'full_patch' 
             ) fp on true
             {completude}
             where (cast(:personne as uuid) is null or p.id = cast(:personne as uuid)) and {visible}
             order by p.recherche
             SQL;
-        $sql = strtr($sql, ['{completude}' => Completude::LATERALE, '{asso_adh}' => $dansPerimetre('a.association_id'), '{asso_role}' => $dansPerimetre('r.organisation_id'), '{visible}' => $visible]);
+        $sql = strtr($sql, ['{completude}' => Completude::LATERALE, '{visible}' => $visible]);
         $lignes = $this->base->fetchAllAssociative($sql,
             ['debut' => $debut->format('Y-m-d'), 'fin' => $debut->modify('+1 month')->format('Y-m-d'), 'personne' => $personne] + $parametres,
         );

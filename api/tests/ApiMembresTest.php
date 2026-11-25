@@ -406,8 +406,8 @@ class ApiMembresTest extends WebTestCase
         $this->envoyer('POST', '/api/adhesions', $p + ['association' => '/api/organisations/'.$bearn, 'debut' => '2026-01-01'], $admin);
         $moisCourant = (int) date('n') + 12 * ((int) date('Y') - 2026);  // 2026 et 2027 : 60 € le mois
 
-        // Réservé à l'administration ; l'aperçu n'enregistre rien.
-        $this->envoyer('POST', '/api/personnes/'.$id.'/cotisations/calcul', ['simuler' => true], $gestion);
+        // Pas pour l'accueil ; l'aperçu n'enregistre rien.
+        $this->envoyer('POST', '/api/personnes/'.$id.'/cotisations/calcul', ['simuler' => true], $this->jeton(['membres:accueil']));
         self::assertResponseStatusCodeSame(403);
         $apercu = $this->envoyer('POST', '/api/personnes/'.$id.'/cotisations/calcul', ['regleesJusquau' => '2025-12-31', 'simuler' => true], $admin);
         self::assertSame(2 + 132 + $moisCourant, $apercu['creees']);
@@ -517,9 +517,24 @@ class ApiMembresTest extends WebTestCase
 
         // Sa fiche, avec le détail ; de son historique, seulement le Béarn.
         self::assertSame('0611223344', $this->lire('/api/personnes/'.$ancien, $gestion)['telephone']);
-        self::assertSame(['full_patch'], array_map(fn ($a) => basename($a['categorie']), $this->lire('/api/adhesions?membre='.$ancien, $gestion)));
+        // Tout son historique, pour le vérifier avec elle (ici Productions), sans pouvoir y écrire.
+        $historique = $this->lire('/api/adhesions?membre='.$ancien, $gestion);
+        self::assertEqualsCanonicalizing(['full_patch', 'adherent'], array_map(fn ($a) => basename($a['categorie']), $historique));
+        $prodAdh = array_values(array_filter($historique, fn ($a) => 'adherent' === basename($a['categorie'])))[0];
+        $this->envoyer('PATCH', '/api/adhesions/'.$prodAdh['id'], ['debut' => '2022-02-01'], $gestion);
+        self::assertResponseStatusCodeSame(403);
         $this->lire('/api/personnes/'.$ancien.'/acces', $gestion);
         self::assertResponseIsSuccessful();
+
+        // Calcul des cotisations : seulement les adhésions du Béarn.
+        $r = $this->envoyer('POST', '/api/personnes/'.$ancien.'/cotisations/calcul', ['simuler' => true], $gestion);
+        self::assertResponseIsSuccessful();
+        self::assertSame([], array_filter($r['sans_tarif'], fn ($t) => $t['association'] !== $bearn));
+
+        // Doublon : il voit qu'une fiche existe ailleurs, sans la voir.
+        $h = $this->lire('/api/homonymes?nom=basque', $gestion);
+        self::assertSame([1, []], [$h['total'], $h['visibles']]);
+        self::assertSame(1, $this->lire('/api/homonymes?nom=Ancien-du-Béarn', $gestion)['total']);
 
         // Une personne d'ailleurs : refusée partout.
         foreach (['', '/acces', '/cotisations'] as $suite) {

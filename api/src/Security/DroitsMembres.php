@@ -63,9 +63,10 @@ final class DroitsMembres extends Voter
     {
         return match (true) {
             $sujet instanceof Personne => $this->visibilite->voitPersonne((string) $sujet->getId()),
-            $sujet instanceof Adhesion => $this->visibilite->voitAssociation($sujet->getAssociation()?->getId()?->toRfc4122()),
-            $sujet instanceof Cotisation => $this->visibilite->voitAssociation($sujet->getAdhesion()?->getAssociation()?->getId()?->toRfc4122()),
-            $sujet instanceof Representation => $this->visibilite->voitAssociation($sujet->getOrganisation()?->getId()?->toRfc4122()),
+            // L'historique d'une personne se voit avec elle.
+            $sujet instanceof Adhesion => $this->visibilite->voitPersonne((string) $sujet->getMembre()?->getId()),
+            $sujet instanceof Cotisation => $this->visibilite->voitPersonne((string) $sujet->getAdhesion()?->getMembre()?->getId()),
+            $sujet instanceof Representation => $this->visibilite->voitPersonne((string) $sujet->getPersonne()?->getId()),
             default => false,
         };
     }
