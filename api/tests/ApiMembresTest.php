@@ -678,4 +678,51 @@ class ApiMembresTest extends WebTestCase
         $this->envoyer('POST', '/api/personnes/'.$id.'/paiement-mois', ['mois' => '2026-11', 'moyen' => 'especes'], $historique);
         self::assertResponseStatusCodeSame(403);
     }
+
+    /** Doublons : détection (nom, e-mail, téléphone), « pas un doublon », fusion. */
+    public function testDoublons(): void
+    {
+        $admin = $this->jeton(['membres:admin']);
+        $bearn = $this->association('JaXaJ MC Béarn');
+        $groupeDe = fn (string $id) => array_values(array_filter($this->lire('/api/doublons', $admin), fn ($g) => in_array($id, array_column($g['fiches'], 'id'), true)))[0] ?? null;
+
+        $a = $this->envoyer('POST', '/api/personnes', ['nom' => 'Meslier', 'prenom' => 'David', 'telephone' => '0611111111'], $admin)['id'];
+        $b = $this->envoyer('POST', '/api/personnes', ['nom' => 'MESLIER', 'prenom' => 'david', 'dateNaissance' => '1968-03-26', 'email' => 'd@example.org'], $admin)['id'];
+        $c = $this->envoyer('POST', '/api/personnes', ['nom' => 'Autre', 'email' => 'D@example.org'], $admin)['id'];  // même e-mail que b
+        $groupe = $groupeDe($a);
+        self::assertEqualsCanonicalizing([$a, $b, $c], array_column($groupe['fiches'], 'id'));
+        self::assertEqualsCanonicalizing(['nom', 'email'], $groupe['raisons']);
+        $this->lire('/api/doublons', $this->jeton(['membres:gestion']));
+        self::assertResponseStatusCodeSame(403);
+
+        // c n'est pas un doublon de b (même e-mail partagé) : écarté.
+        $this->envoyer('POST', '/api/doublons/ecarter', ['ids' => [$b, $c]], $admin);
+        self::assertResponseStatusCodeSame(204);
+        self::assertEqualsCanonicalizing([$a, $b], array_column($groupeDe($a)['fiches'], 'id'));
+
+        // Fusion de b dans a : adhésions, rôles, coordonnées et champs manquants passent à a.
+        $this->envoyer('POST', '/api/adhesions', ['membre' => '/api/personnes/'.$b, 'association' => '/api/organisations/'.$bearn,
+            'categorie' => '/api/categories/full_patch', 'debut' => '2015-01-01'], $admin);
+        $this->envoyer('POST', '/api/roles', ['personne' => '/api/personnes/'.$b, 'organisation' => '/api/organisations/'.$bearn,
+            'role' => 'representant', 'debut' => '2015-01-01'], $admin);
+        $this->envoyer('POST', '/api/personnes/'.$a.'/fusion', ['absorber' => $b], $admin);
+        self::assertResponseIsSuccessful();
+        $fiche = $this->lire('/api/personnes/'.$a, $admin);
+        self::assertSame(['0611111111', 'd@example.org', '1968-03-26'], [$fiche['telephone'], $fiche['email'], substr($fiche['dateNaissance'], 0, 10)]);
+        self::assertCount(1, $this->lire('/api/adhesions?membre='.$a, $admin));
+        self::assertCount(1, $this->lire('/api/roles?personne='.$a, $admin));
+        $this->lire('/api/personnes/'.$b, $admin);
+        self::assertResponseStatusCodeSame(404);
+        self::assertNull($groupeDe($a));
+
+        // Adhésions qui se recouvrent dans la même association : fusion refusée, rien n'est changé.
+        $d = $this->envoyer('POST', '/api/personnes', ['nom' => 'Meslier', 'prenom' => 'David'], $admin)['id'];
+        $this->envoyer('POST', '/api/adhesions', ['membre' => '/api/personnes/'.$d, 'association' => '/api/organisations/'.$bearn,
+            'categorie' => '/api/categories/suiveur', 'debut' => '2016-01-01'], $admin);
+        $refus = $this->envoyer('POST', '/api/personnes/'.$a.'/fusion', ['absorber' => $d], $admin);
+        self::assertResponseStatusCodeSame(422);
+        self::assertStringContainsString('se recouvrent', $refus['detail']);
+        $this->lire('/api/personnes/'.$d, $admin);
+        self::assertResponseIsSuccessful();
+    }
 }

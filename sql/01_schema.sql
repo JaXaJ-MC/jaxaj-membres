@@ -81,6 +81,16 @@ create table annuaire.organisation (
   foreign key (id, nature) references annuaire.entite (id, nature) on delete cascade
 );
 
+-- Paires de fiches qui se ressemblent mais ne sont pas des doublons (homonymes) : la page des
+-- doublons ne les propose plus.
+create table annuaire.non_doublon (
+  a          uuid not null references annuaire.personne (id) on delete cascade,
+  b          uuid not null references annuaire.personne (id) on delete cascade,
+  cree_le    timestamptz not null default now(),
+  primary key (a, b),
+  check (a < b)
+);
+
 create table annuaire.adresse (
   id          uuid primary key default gen_random_uuid(),
   entite_id   uuid not null references annuaire.entite (id) on delete cascade,
