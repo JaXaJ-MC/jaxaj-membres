@@ -21,6 +21,7 @@ use Symfony\Component\Validator\Constraints as Assert;
  * coordonnées et date de naissance pour la gestion (groupe personne:detail).
  */
 #[ORM\Entity]
+#[ORM\HasLifecycleCallbacks]
 #[ORM\Table(name: 'personne', schema: 'annuaire')]
 #[ApiResource(
     operations: [
@@ -64,6 +65,18 @@ class Personne
     #[Assert\Choice(choices: ['personne', 'artiste', 'structure'], message: 'Type de fiche : personne, artiste ou structure.')]
     #[Groups(['personne:lire', 'personne:ecrire'])]
     private string $type = 'personne';
+
+    /** actif, ou disparu : personne décédée, artiste ou structure qui n'existe plus. */
+    #[ORM\Column]
+    #[Assert\Choice(choices: ['actif', 'disparu'], message: 'Statut : actif ou disparu.')]
+    #[Groups(['personne:lire', 'personne:ecrire'])]
+    private string $statut = 'actif';
+
+    /** Date du décès ou de la fin, si on la connaît. */
+    #[ORM\Column(name: 'disparu_le', type: 'date_immutable', nullable: true)]
+    #[Assert\LessThanOrEqual('today')]
+    #[Groups(['personne:lire', 'personne:ecrire'])]
+    private ?\DateTimeImmutable $disparuLe = null;
 
     #[ORM\Column(name: 'date_naissance', type: 'date_immutable', nullable: true)]
     #[Assert\LessThan('today')]
@@ -202,4 +215,19 @@ class Personne
 
     public function getType(): string { return $this->type; }
     public function setType(string $t): void { $this->type = $t; }
+
+    public function getStatut(): string { return $this->statut; }
+    public function setStatut(string $s): void { $this->statut = $s; }
+    public function getDisparuLe(): ?\DateTimeImmutable { return 'disparu' === $this->statut ? $this->disparuLe : null; }
+    public function setDisparuLe(?\DateTimeImmutable $d): void { $this->disparuLe = $d; }
+
+    /** Revenir à « actif » efface la date. */
+    #[ORM\PrePersist]
+    #[ORM\PreUpdate]
+    public function coherenceStatut(): void
+    {
+        if ('disparu' !== $this->statut) {
+            $this->disparuLe = null;
+        }
+    }
 }

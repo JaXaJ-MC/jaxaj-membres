@@ -51,13 +51,17 @@ create table annuaire.personne (
   surnom         text,  -- nom de route
   type           text not null default 'personne'  -- personne, artiste (ou groupe), structure (club, association)
                    check (type in ('personne', 'artiste', 'structure')),
+  statut         text not null default 'actif'  -- disparu : décédé(e), ou n'existe plus ; hors de la liste courante
+                   check (statut in ('actif', 'disparu')),
+  disparu_le     date,
   date_naissance date,
   commentaire    text,
   recherche      text generated always as (annuaire.normaliser(
                    nom || ' ' || coalesce(prenom, '') || ' ' || coalesce(surnom, ''))) stored,
   cree_le        timestamptz not null default now(),
   modifie_le     timestamptz not null default now(),
-  foreign key (id, nature) references annuaire.entite (id, nature) on delete cascade
+  foreign key (id, nature) references annuaire.entite (id, nature) on delete cascade,
+  constraint personne_disparu_le_check check (statut = 'disparu' or disparu_le is null)
 );
 
 create table annuaire.organisation (

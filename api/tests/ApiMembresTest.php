@@ -612,5 +612,14 @@ class ApiMembresTest extends WebTestCase
         self::assertSame(['manquants' => ['email', 'adresse', 'adhesion'], 'total' => 4], $completude($club));
         $this->envoyer('POST', '/api/personnes', ['nom' => 'X', 'type' => 'robot'], $admin);
         self::assertResponseStatusCodeSame(422);
+
+        // Un club qui n'existe plus : statut « disparu », toujours dans la liste (l'interface le met à part).
+        $fin = $this->envoyer('PATCH', '/api/personnes/'.$club, ['statut' => 'disparu', 'disparuLe' => '2019-06-30'], $admin);
+        self::assertSame(['disparu', '2019-06-30'], [$fin['statut'], substr($fin['disparuLe'], 0, 10)]);
+        $ligne = array_values(array_filter($this->lire('/api/liste', $admin)['personnes'], fn ($l) => $l['id'] === $club))[0];
+        self::assertSame(['disparu', '2019-06-30'], [$ligne['statut'], $ligne['disparu_le']]);
+        $actif = $this->envoyer('PATCH', '/api/personnes/'.$club, ['statut' => 'actif'], $admin);
+        self::assertSame('actif', $actif['statut']);
+        self::assertArrayNotHasKey('disparuLe', $actif);  // la date s'efface
     }
 }
