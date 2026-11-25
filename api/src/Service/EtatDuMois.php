@@ -50,7 +50,8 @@ final class EtatDuMois
             select p.id, p.nom, p.prenom, p.surnom,
                    adh.id as adhesion, adh.association_id as association, adh.categorie,
                    ce.montant, ce.regle, ce.gratuite, ce.a_jour, t.montant as tarif,
-                   derniere.fin as derniere_cotisation, ro.roles, ad.adhesions, fp.premier as premier_full_patch
+                   derniere.fin as derniere_cotisation, ro.roles, ad.adhesions, fp.premier as premier_full_patch,
+                   completude.manquants, completude.total
             from annuaire.personne p
             left join adh on adh.membre_id = p.id
             left join adhesion.cotisation_etat ce
@@ -74,10 +75,11 @@ final class EtatDuMois
               from adhesion.adhesion a
               where a.membre_id = p.id and a.categorie = 'full_patch' and {asso_adh}
             ) fp on true
+            {completude}
             where (cast(:personne as uuid) is null or p.id = cast(:personne as uuid)) and {visible}
             order by p.recherche
             SQL;
-        $sql = strtr($sql, ['{asso_adh}' => $dansPerimetre('a.association_id'), '{asso_role}' => $dansPerimetre('r.organisation_id'), '{visible}' => $visible]);
+        $sql = strtr($sql, ['{completude}' => Completude::LATERALE, '{asso_adh}' => $dansPerimetre('a.association_id'), '{asso_role}' => $dansPerimetre('r.organisation_id'), '{visible}' => $visible]);
         $lignes = $this->base->fetchAllAssociative($sql,
             ['debut' => $debut->format('Y-m-d'), 'fin' => $debut->modify('+1 month')->format('Y-m-d'), 'personne' => $personne] + $parametres,
         );
@@ -95,6 +97,7 @@ final class EtatDuMois
             'roles' => $l['roles'] ? json_decode($l['roles'], true) : [],  // rôles en cours aujourd'hui
             'adhesions' => $l['adhesions'] ? json_decode($l['adhesions'], true) : [],  // toutes celles du mois
             'premier_full_patch' => $l['premier_full_patch'],  // date du premier passage full patch
+            'completude' => ['manquants' => json_decode($l['manquants'], true), 'total' => (int) $l['total']],  // voir Completude
         ], $lignes);
     }
 
