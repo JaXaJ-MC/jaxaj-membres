@@ -591,17 +591,26 @@ class ApiMembresTest extends WebTestCase
         $completude = fn (string $id) => $this->lire('/api/personnes/'.$id.'/completude', $admin);
 
         $public = $this->envoyer('POST', '/api/personnes', ['nom' => 'Spectateur'], $admin)['id'];
-        self::assertSame(['manquants' => ['prenom', 'contact', 'adhesion'], 'total' => 3], $completude($public));
+        self::assertSame(['manquants' => ['prenom', 'email', 'adhesion'], 'total' => 4], $completude($public));
         $this->envoyer('PATCH', '/api/personnes/'.$public, ['prenom' => 'Léa', 'email' => 'lea@example.org'], $admin);
         $this->envoyer('POST', '/api/adhesions', ['membre' => '/api/personnes/'.$public, 'association' => '/api/organisations/'.$this->association('JaXaJ Productions'),
             'categorie' => '/api/categories/public', 'debut' => '2026-11-01'], $admin);
-        self::assertSame(['manquants' => [], 'total' => 3], $completude($public));
+        self::assertSame(['manquants' => [], 'total' => 4], $completude($public));
 
         $membre = $this->envoyer('POST', '/api/personnes', ['nom' => 'Motard', 'prenom' => 'Paul', 'telephone' => '0600000000'], $admin)['id'];
         $this->envoyer('POST', '/api/adhesions', ['membre' => '/api/personnes/'.$membre, 'association' => '/api/organisations/'.$this->association('JaXaJ MC Béarn'),
             'categorie' => '/api/categories/full_patch', 'debut' => '2026-01-01'], $admin);
-        self::assertSame(['manquants' => ['surnom', 'naissance', 'email', 'adresse', 'cotisations'], 'total' => 8], $completude($membre));
+        self::assertSame(['manquants' => ['naissance', 'email', 'adresse', 'cotisations'], 'total' => 8], $completude($membre));
         $ligne = array_values(array_filter($this->lire('/api/liste', $admin)['personnes'], fn ($l) => $l['id'] === $membre))[0];
         self::assertSame($completude($membre), $ligne['completude']);
+        self::assertSame('personne', $ligne['type']);
+
+        // Un groupe : nom, e-mail, téléphone, adhésion. Un club : nom, e-mail, adresse, adhésion.
+        $groupe = $this->envoyer('POST', '/api/personnes', ['nom' => 'Les Rugissants', 'type' => 'artiste', 'email' => 'groupe@example.org'], $admin)['id'];
+        self::assertSame(['manquants' => ['telephone', 'adhesion'], 'total' => 4], $completude($groupe));
+        $club = $this->envoyer('POST', '/api/personnes', ['nom' => 'MC des Gaves', 'type' => 'structure'], $admin)['id'];
+        self::assertSame(['manquants' => ['email', 'adresse', 'adhesion'], 'total' => 4], $completude($club));
+        $this->envoyer('POST', '/api/personnes', ['nom' => 'X', 'type' => 'robot'], $admin);
+        self::assertResponseStatusCodeSame(422);
     }
 }

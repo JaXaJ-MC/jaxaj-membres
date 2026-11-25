@@ -49,6 +49,8 @@ create table annuaire.personne (
   nom            text not null,
   prenom         text,
   surnom         text,  -- nom de route
+  type           text not null default 'personne'  -- personne, artiste (ou groupe), structure (club, association)
+                   check (type in ('personne', 'artiste', 'structure')),
   date_naissance date,
   commentaire    text,
   recherche      text generated always as (annuaire.normaliser(

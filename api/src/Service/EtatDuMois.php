@@ -47,7 +47,7 @@ final class EtatDuMois
               select membre_id, max(upper(periode)) - 1 as fin
               from adhesion.cotisation_etat where a_jour group by membre_id
             )
-            select p.id, p.nom, p.prenom, p.surnom,
+            select p.id, p.nom, p.prenom, p.surnom, p.type,
                    adh.id as adhesion, adh.association_id as association, adh.categorie,
                    ce.montant, ce.regle, ce.gratuite, ce.a_jour, t.montant as tarif,
                    derniere.fin as derniere_cotisation, ro.roles, ad.adhesions, fp.premier as premier_full_patch,
@@ -89,6 +89,7 @@ final class EtatDuMois
             'nom' => $l['nom'],
             'prenom' => $l['prenom'],
             'surnom' => $l['surnom'],
+            'type' => $l['type'],  // personne, artiste ou structure
             'adhesion' => $l['adhesion'],
             'association' => $l['association'],
             'categorie' => $l['categorie'],

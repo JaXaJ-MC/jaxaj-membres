@@ -59,6 +59,12 @@ class Personne
     #[Groups(['personne:lire', 'personne:ecrire'])]
     private ?string $surnom = null;
 
+    /** personne, artiste (un artiste ou un groupe) ou structure (un club, une association). */
+    #[ORM\Column]
+    #[Assert\Choice(choices: ['personne', 'artiste', 'structure'], message: 'Type de fiche : personne, artiste ou structure.')]
+    #[Groups(['personne:lire', 'personne:ecrire'])]
+    private string $type = 'personne';
+
     #[ORM\Column(name: 'date_naissance', type: 'date_immutable', nullable: true)]
     #[Assert\LessThan('today')]
     #[Groups(['personne:detail', 'personne:ecrire'])]
@@ -193,4 +199,7 @@ class Personne
     /** Présent seulement avec le détail : dit à l'interface que les coordonnées sont visibles. */
     #[Groups(['personne:detail'])]
     public function isDetail(): bool { return true; }
+
+    public function getType(): string { return $this->type; }
+    public function setType(string $t): void { $this->type = $t; }
 }
