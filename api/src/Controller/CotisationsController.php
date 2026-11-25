@@ -47,9 +47,9 @@ final class CotisationsController extends AbstractController
     #[Route('/api/personnes/{id}/cotisations/calcul', methods: ['POST'], requirements: ['id' => '[0-9a-f-]{36}'])]
     public function calcul(string $id, Request $requete, CalculCotisations $calcul, Connection $base, Visibilite $visibilite): JsonResponse
     {
-        // Administration, ou gestion pour les personnes qu'elle voit : seulement les adhésions de
-        // ses associations.
-        $associations = $visibilite->associationsGerees();
+        // Administration, ou capacité « historique » pour les personnes qu'on voit : seulement les
+        // adhésions de ses associations.
+        $associations = $visibilite->associationsPour('historique');
         if (!$this->isGranted(DroitsMembres::ADMIN) && ([] === $associations || !$visibilite->voitPersonne($id))) {
             throw $this->createAccessDeniedException();
         }

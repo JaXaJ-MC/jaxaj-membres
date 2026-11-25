@@ -13,7 +13,12 @@ use Symfony\Component\Security\Core\Authorization\Voter\Voter;
 /**
  * Droits de l'application membres :
  *   membres:admin               tout
- *   membres:gestion[:asso]      personnes, adhésions, cotisations et rôles (de l'association donnée)
+ *   membres:gestion[:asso]      personnes, adhésions, cotisations et rôles (de l'association donnée) :
+ *                               les trois capacités suivantes, qu'on peut aussi donner une par une
+ *   membres:inscription[:asso]  créer des fiches et de nouvelles adhésions
+ *   membres:historique[:asso]   corriger les adhésions (dates, niveau, exemption), les rôles ;
+ *                               calculer les cotisations
+ *   membres:tresorerie[:asso]   encaisser, créer des cotisations
  *   membres:accueil[:asso]      à l'entrée d'un événement : rechercher, inscrire une personne,
  *                               lui faire adhérer comme « adhérent événement » (de l'association)
  *
@@ -23,7 +28,9 @@ final class DroitsMembres extends Voter
 {
     public const LIRE = 'MEMBRES_LIRE';               // rechercher, consulter
     public const ECRIRE_PERSONNE = 'MEMBRES_ECRIRE_PERSONNE';
-    public const ECRIRE_ADHESION = 'MEMBRES_ECRIRE_ADHESION'; // sujet : Adhesion ou Cotisation
+    public const CREER_ADHESION = 'MEMBRES_CREER_ADHESION';     // sujet : Adhesion (nouvelle)
+    public const MODIFIER_ADHESION = 'MEMBRES_MODIFIER_ADHESION'; // sujet : Adhesion
+    public const ENCAISSER = 'MEMBRES_ENCAISSER';               // sujet : Adhesion ou Cotisation
     public const ECRIRE_ROLE = 'MEMBRES_ECRIRE_ROLE';     // sujet : Representation
     public const ADMIN = 'MEMBRES_ADMIN';
     public const VOIR = 'MEMBRES_VOIR';               // sujet : Personne, Adhesion, Cotisation, Representation
@@ -45,15 +52,17 @@ final class DroitsMembres extends Voter
         if ([] === $u->perimetre('admin')) {
             return true;
         }
-        $gestion = $u->perimetre('gestion');
+        $equipe = $u->equipe();
         $accueil = $u->perimetre('accueil');
 
         return match ($attribute) {
-            self::LIRE, self::ECRIRE_PERSONNE => null !== $gestion || null !== $accueil,
-            self::ECRIRE_ADHESION => $this->adhesion($subject, $gestion, $accueil),
-            self::ECRIRE_ROLE => $this->role($subject, $gestion),
-            self::VOIR => (null !== $gestion || null !== $accueil) && $this->voir($subject),
-            self::MODIFIER_PERSONNE => (null !== $gestion || null !== $accueil)
+            self::LIRE, self::ECRIRE_PERSONNE => null !== $equipe || null !== $accueil,
+            self::CREER_ADHESION => $this->adhesion($subject, $u->capacite('inscription'), $accueil),
+            self::MODIFIER_ADHESION => $this->adhesion($subject, $u->capacite('historique'), null),
+            self::ENCAISSER => $this->adhesion($subject, $u->capacite('tresorerie'), $accueil),
+            self::ECRIRE_ROLE => $this->role($subject, $u->capacite('historique')),
+            self::VOIR => (null !== $equipe || null !== $accueil) && $this->voir($subject),
+            self::MODIFIER_PERSONNE => (null !== $equipe || null !== $accueil)
                 && $subject instanceof Personne && $this->visibilite->voitDetail((string) $subject->getId()),
             default => false,
         };
@@ -71,7 +80,7 @@ final class DroitsMembres extends Voter
         };
     }
 
-    /** Rôles : la gestion, dans son périmètre (l'organisation du rôle, ou toutes). */
+    /** Rôles : la capacité « historique », dans son périmètre (l'organisation du rôle, ou toutes). */
     private function role(mixed $sujet, ?array $gestion): bool
     {
         if (null === $gestion) {
@@ -82,16 +91,17 @@ final class DroitsMembres extends Voter
         return [] === $gestion || ($organisation && in_array((string) $organisation->getId(), $gestion, true));
     }
 
-    private function adhesion(mixed $sujet, ?array $gestion, ?array $accueil): bool
+    /** Adhésion ou cotisation : la capacité dans l'association, ou l'accueil pour le public. */
+    private function adhesion(mixed $sujet, ?array $capacite, ?array $accueil): bool
     {
         $adhesion = $sujet instanceof Cotisation ? $sujet->getAdhesion() : $sujet;
         if (!$adhesion instanceof Adhesion || !$adhesion->getAssociation()) {
-            return null !== $gestion;
+            return null !== $capacite;
         }
         $asso = (string) $adhesion->getAssociation()->getId();
         $couvre = fn (?array $p) => null !== $p && ([] === $p || in_array($asso, $p, true));
 
-        return $couvre($gestion)
+        return $couvre($capacite)
             || ($couvre($accueil) && 'public' === $adhesion->getCategorie()?->getCode());
     }
 }

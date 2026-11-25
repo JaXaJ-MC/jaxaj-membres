@@ -39,7 +39,7 @@ final class PaiementMoisController extends AbstractController
             return $this->json(['detail' => 'Aucune adhésion en cours ce mois-là : créer d\'abord une adhésion.'], 422);
         }
         $adhesion = $em->find(Adhesion::class, Uuid::fromString($ligne['adhesion']));
-        $this->denyAccessUnlessGranted(DroitsMembres::ECRIRE_ADHESION, $adhesion);
+        $this->denyAccessUnlessGranted(DroitsMembres::ENCAISSER, $adhesion);
 
         $em->wrapInTransaction(function () use ($em, $adhesion, $mois, $moyen, $id) {
             $base = $em->getConnection();

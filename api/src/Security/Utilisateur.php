@@ -30,6 +30,40 @@ final class Utilisateur implements JWTUserInterface
     public function getRoles(): array { return ['ROLE_USER']; }
     public function eraseCredentials(): void {}
 
+    /** Capacités qu'apporte la gestion d'une association, données aussi une par une. */
+    public const CAPACITES = ['inscription', 'historique', 'tresorerie'];
+
+    /**
+     * Une capacité (inscription, historique, tresorerie), donnée seule ou par la gestion : null si
+     * l'utilisateur ne l'a pas, sinon les associations concernées ([] = toutes).
+     */
+    public function capacite(string $capacite): ?array
+    {
+        return self::fusionner([$this->perimetre('gestion'), $this->perimetre($capacite)]);
+    }
+
+    /** Associations où l'utilisateur a au moins une capacité : ce qu'il voit, avec le détail. */
+    public function equipe(): ?array
+    {
+        return self::fusionner(array_map(fn ($c) => $this->perimetre($c), ['gestion', ...self::CAPACITES]));
+    }
+
+    /** Réunion de périmètres : null si aucun, [] (toutes) si l'un vaut toutes. */
+    private static function fusionner(array $perimetres): ?array
+    {
+        $presents = array_filter($perimetres, fn ($p) => null !== $p);
+        if (!$presents) {
+            return null;
+        }
+        foreach ($presents as $p) {
+            if ([] === $p) {
+                return [];
+            }
+        }
+
+        return array_values(array_unique(array_merge(...$presents)));
+    }
+
     /**
      * Le rôle donné dans l'application « membres » : null s'il ne l'a pas, sinon la liste des
      * associations concernées ([] = toutes).

@@ -637,4 +637,45 @@ class ApiMembresTest extends WebTestCase
         self::assertSame('actif', $actif['statut']);
         self::assertArrayNotHasKey('disparuLe', $actif);  // la date s'efface
     }
+
+    /** Capacités données une par une, mission après mission : inscription, historique, trésorerie. */
+    public function testCapacitesParMission(): void
+    {
+        $admin = $this->jeton(['membres:admin']);
+        $bearn = $this->association('JaXaJ MC Béarn');
+        $inscription = $this->jeton(['membres:inscription:'.$bearn]);
+        $historique = $this->jeton(['membres:historique:'.$bearn]);
+        $tresorerie = $this->jeton(['membres:tresorerie:'.$bearn]);
+
+        // Inscription : une fiche et son adhésion support ; pas de correction, pas d'encaissement.
+        $id = $this->envoyer('POST', '/api/personnes', ['nom' => 'Nouveau', 'prenom' => 'Support'], $inscription)['id'];
+        $adhesion = $this->envoyer('POST', '/api/adhesions', ['membre' => '/api/personnes/'.$id, 'association' => '/api/organisations/'.$bearn,
+            'categorie' => '/api/categories/support', 'debut' => '2026-11-01'], $inscription);
+        self::assertResponseStatusCodeSame(201);
+        self::assertTrue($this->lire('/api/personnes/'.$id, $inscription)['detail']);  // il voit sa fiche, en détail
+        $this->envoyer('PATCH', '/api/adhesions/'.$adhesion['id'], ['debut' => '2026-10-01'], $inscription);
+        self::assertResponseStatusCodeSame(403);
+        $this->envoyer('POST', '/api/personnes/'.$id.'/paiement-mois', ['mois' => '2026-11', 'moyen' => 'especes'], $inscription);
+        self::assertResponseStatusCodeSame(403);
+
+        // Historique : corriger les dates, un rôle, calculer ; pas de nouvelle adhésion ni d'encaissement.
+        $this->envoyer('PATCH', '/api/adhesions/'.$adhesion['id'], ['debut' => '2026-10-01'], $historique);
+        self::assertResponseIsSuccessful();
+        $this->envoyer('POST', '/api/roles', ['personne' => '/api/personnes/'.$id, 'organisation' => '/api/organisations/'.$bearn,
+            'role' => 'representant', 'debut' => '2026-10-01'], $historique);
+        self::assertResponseStatusCodeSame(201);
+        $this->envoyer('POST', '/api/personnes/'.$id.'/cotisations/calcul', ['simuler' => true], $historique);
+        self::assertResponseIsSuccessful();
+        $this->envoyer('POST', '/api/personnes/'.$id.'/cotisations/calcul', ['simuler' => true], $tresorerie);
+        self::assertResponseStatusCodeSame(403);
+        $this->envoyer('POST', '/api/adhesions', ['membre' => '/api/personnes/'.$id, 'association' => '/api/organisations/'.$bearn,
+            'categorie' => '/api/categories/suiveur', 'debut' => '2027-01-01'], $historique);
+        self::assertResponseStatusCodeSame(403);
+
+        // Trésorerie : encaisser le mois.
+        $this->envoyer('POST', '/api/personnes/'.$id.'/paiement-mois', ['mois' => '2026-11', 'moyen' => 'especes'], $tresorerie);
+        self::assertResponseStatusCodeSame(201);
+        $this->envoyer('POST', '/api/personnes/'.$id.'/paiement-mois', ['mois' => '2026-11', 'moyen' => 'especes'], $historique);
+        self::assertResponseStatusCodeSame(403);
+    }
 }

@@ -35,10 +35,10 @@ use Symfony\Component\Validator\Constraints as Assert;
             ],
         ),
         new Get(security: "is_granted('MEMBRES_VOIR', object)"),
-        new Post(securityPostDenormalize: "is_granted('MEMBRES_ECRIRE_ADHESION', object)"),
+        new Post(securityPostDenormalize: "is_granted('MEMBRES_CREER_ADHESION', object)"),
         new Patch(
-            security: "is_granted('MEMBRES_ECRIRE_ADHESION', object)",
-            securityPostDenormalize: "is_granted('MEMBRES_ECRIRE_ADHESION', object)",
+            security: "is_granted('MEMBRES_MODIFIER_ADHESION', object)",
+            securityPostDenormalize: "is_granted('MEMBRES_MODIFIER_ADHESION', object)",
             denormalizationContext: ['groups' => ['adhesion:modifier']],
         ),
         new Delete(security: "is_granted('MEMBRES_ADMIN')"),  // saisie erronée ; une adhésion terminée se clôt avec « fin »

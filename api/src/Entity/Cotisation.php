@@ -30,7 +30,7 @@ use Symfony\Component\Validator\Constraints as Assert;
             ],
         ),
         new Get(security: "is_granted('MEMBRES_VOIR', object)"),
-        new Post(securityPostDenormalize: "is_granted('MEMBRES_ECRIRE_ADHESION', object)"),
+        new Post(securityPostDenormalize: "is_granted('MEMBRES_ENCAISSER', object)"),
     ],
     normalizationContext: ['groups' => ['cotisation:lire']],
     denormalizationContext: ['groups' => ['cotisation:ecrire']],

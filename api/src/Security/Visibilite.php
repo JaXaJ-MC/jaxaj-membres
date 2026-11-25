@@ -12,7 +12,9 @@ use Symfony\Bundle\SecurityBundle\Security;
  *   accueil                                 tout le monde (pour identifier qui se présente à
  *                                           l'entrée) ; le détail des seules fiches créées le
  *                                           jour même, pour relire sa saisie
- *   gestion d'une association               les personnes qui ont ou ont eu une adhésion ou un
+ *   gestion d'une association (ou l'une de   les personnes
+ *   ses capacités : inscription, historique,
+ *   trésorerie) qui ont ou ont eu une adhésion ou un
  *                                           rôle dans cette association, avec leur détail et
  *                                           tout leur historique (la mère, d'autres chapitres :
  *                                           pour le vérifier avec elles) ; elle n'écrit que dans
@@ -37,7 +39,7 @@ final class Visibilite
     {
         $u = $this->utilisateur();
 
-        return $u && ([] === $u->perimetre('admin') || [] === $u->perimetre('gestion'));
+        return $u && ([] === $u->perimetre('admin') || [] === $u->equipe());
     }
 
     /** Voit tout le monde (sans forcément le détail) : toutes associations, ou accueil. */
@@ -56,13 +58,13 @@ final class Visibilite
             return null;
         }
 
-        return $this->utilisateur()?->perimetre('gestion') ?: [];  // [] : ne voit personne
+        return $this->utilisateur()?->equipe() ?: [];  // [] : ne voit personne
     }
 
     /** Associations dont l'utilisateur voit le détail des membres, hors « tout le détail ». */
     private function associationsDetail(): array
     {
-        return $this->toutDetail() ? [] : ($this->utilisateur()?->perimetre('gestion') ?? []);
+        return $this->toutDetail() ? [] : ($this->utilisateur()?->equipe() ?? []);
     }
 
     public function voitPersonne(string $id): bool
@@ -103,15 +105,18 @@ final class Visibilite
             'select 1 from annuaire.personne where id = :id and cree_le >= current_date', ['id' => $id]);
     }
 
-    /** Associations où la gestion de l'utilisateur écrit : null = toutes (admin, gestion sans périmètre). */
-    public function associationsGerees(): ?array
+    /** Associations où l'utilisateur a cette capacité : null = toutes (admin, ou capacité sans périmètre), [] = aucune. */
+    public function associationsPour(string $capacite): ?array
     {
         $u = $this->utilisateur();
-        if (!$u || [] === $u->perimetre('admin') || [] === $u->perimetre('gestion')) {
-            return $u ? null : [];
+        if (!$u) {
+            return [];
+        }
+        if ([] === $u->perimetre('admin') || [] === $u->capacite($capacite)) {
+            return null;
         }
 
-        return $u->perimetre('gestion') ?? [];
+        return $u->capacite($capacite) ?? [];
     }
 
     /** Condition SQL « personne visible » sur une colonne d'identifiant de personne, pour les listes. */

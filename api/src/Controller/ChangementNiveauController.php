@@ -32,7 +32,7 @@ final class ChangementNiveauController extends AbstractController
         if (!$date || !$categorie) {
             return $this->json(['detail' => 'Attendu : categorie (code) et date (AAAA-MM-JJ).'], 400);
         }
-        $this->denyAccessUnlessGranted(DroitsMembres::ECRIRE_ADHESION, $ancienne);
+        $this->denyAccessUnlessGranted(DroitsMembres::MODIFIER_ADHESION, $ancienne);
         $periode = $ancienne->getPeriode();
         if ($categorie->getCode() === $ancienne->getCategorie()->getCode()) {
             return $this->json(['detail' => 'C\'est déjà le niveau de cette adhésion.'], 422);
@@ -50,7 +50,7 @@ final class ChangementNiveauController extends AbstractController
         $nouvelle->setDebut($date);
         $nouvelle->setFin($periode->fin);
         $nouvelle->setExemption($ancienne->getExemption());  // l'exemption suit le changement de niveau
-        $this->denyAccessUnlessGranted(DroitsMembres::ECRIRE_ADHESION, $nouvelle);
+        $this->denyAccessUnlessGranted(DroitsMembres::MODIFIER_ADHESION, $nouvelle);
         if (!$nouvelle->isCategorieDuVolet()) {
             return $this->json(['detail' => 'Ce niveau n\'existe pas dans cette association (club ou événementiel).'], 422);
         }
