@@ -50,7 +50,7 @@ final class EtatDuMois
             select p.id, p.nom, p.prenom, p.surnom,
                    adh.id as adhesion, adh.association_id as association, adh.categorie,
                    ce.montant, ce.regle, ce.gratuite, ce.a_jour, t.montant as tarif,
-                   derniere.fin as derniere_cotisation, ro.roles, ad.adhesions
+                   derniere.fin as derniere_cotisation, ro.roles, ad.adhesions, fp.premier as premier_full_patch
             from annuaire.personne p
             left join adh on adh.membre_id = p.id
             left join adhesion.cotisation_etat ce
@@ -69,6 +69,11 @@ final class EtatDuMois
               from adhesion.adhesion a join adhesion.categorie k on k.code = a.categorie
               where a.membre_id = p.id and a.periode && daterange((select d from m), (select f from m)) and {asso_adh}
             ) ad on true
+            left join lateral (
+              select min(lower(a.periode)) as premier
+              from adhesion.adhesion a
+              where a.membre_id = p.id and a.categorie = 'full_patch' and {asso_adh}
+            ) fp on true
             where (cast(:personne as uuid) is null or p.id = cast(:personne as uuid)) and {visible}
             order by p.recherche
             SQL;
@@ -89,6 +94,7 @@ final class EtatDuMois
             'derniere_cotisation' => $l['derniere_cotisation'],
             'roles' => $l['roles'] ? json_decode($l['roles'], true) : [],  // rôles en cours aujourd'hui
             'adhesions' => $l['adhesions'] ? json_decode($l['adhesions'], true) : [],  // toutes celles du mois
+            'premier_full_patch' => $l['premier_full_patch'],  // date du premier passage full patch
         ], $lignes);
     }
 

@@ -580,6 +580,7 @@ class ApiMembresTest extends WebTestCase
 
         // Dans la liste, l'état du mois est celui d'Euskadi, où il paie, pas celui du Béarn exempté.
         $ligne = array_values(array_filter($this->lire('/api/liste', $admin)['personnes'], fn ($l) => $l['id'] === $id))[0];
+        self::assertSame('2020-01-01', $ligne['premier_full_patch']);  // premier passage, toutes associations
         self::assertSame([$this->association('JaXaJ MC Euskadi'), 'a_payer'], [$ligne['association'], $ligne['mois']['statut']]);
     }
 }
