@@ -148,8 +148,18 @@ final class Doublons
                    select case when n.a = :a then n.b else n.a end as x from annuaire.non_doublon n where :a in (n.a, n.b)
                  ) autres where x <> :g
                  on conflict do nothing', $params);
-            $this->deplacer('delete from annuaire.entite where id = :a', $params,
-                'La fiche à fusionner a un compte de connexion : gardez plutôt celle-là.');
+            try {
+                $b->executeStatement('delete from annuaire.entite where id = :a', $params);
+            } catch (DriverException $e) {
+                // Encore référencée ailleurs : dire par quoi (compte de connexion, ou autre table).
+                if ('23503' !== $e->getSQLState()) {
+                    throw $e;
+                }
+                preg_match('/table "(?:[a-z_]+\.)?([a-z_]+)"/', $e->getMessage(), $m);
+                throw new \DomainException('compte' === ($m[1] ?? null)
+                    ? 'La fiche à fusionner a un compte de connexion : rattachez-le d\'abord à la fiche gardée.'
+                    : sprintf('La fiche à fusionner est encore utilisée (%s) : fusion impossible pour l\'instant.', $m[1] ?? 'référence inconnue'), 0, $e);
+            }
             $b->commit();
         } catch (\Throwable $e) {
             $b->rollBack();
