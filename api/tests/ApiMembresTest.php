@@ -715,13 +715,37 @@ class ApiMembresTest extends WebTestCase
         self::assertResponseStatusCodeSame(404);
         self::assertNull($groupeDe($a));
 
-        // Adhésions qui se recouvrent dans la même association : fusion refusée, rien n'est changé.
+        // Même adhésion saisie deux fois, avec ses cotisations : réunie, cotisations sans double, paiements gardés.
+        $prod = $this->association('JaXaJ Productions');
+        $base = static::getContainer()->get(Connection::class);
+        $e = $this->envoyer('POST', '/api/personnes', ['nom' => 'Public', 'prenom' => 'Paul'], $admin)['id'];
+        $f = $this->envoyer('POST', '/api/personnes', ['nom' => 'Public', 'prenom' => 'Paul'], $admin)['id'];
+        $adh = fn (string $p, string $debut, string $fin) => $this->envoyer('POST', '/api/adhesions', ['membre' => '/api/personnes/'.$p,
+            'association' => '/api/organisations/'.$prod, 'categorie' => '/api/categories/public', 'debut' => $debut, 'fin' => $fin], $admin)['id'];
+        $cot = fn (string $adhesion, string $debut) => $this->envoyer('POST', '/api/cotisations', ['adhesion' => '/api/adhesions/'.$adhesion,
+            'debut' => $debut, 'fin' => substr($debut, 0, 4).'-12-31', 'montant' => '20.00'], $admin)['id'];
+        $payer = fn (string $cotisation, string $personne) => $base->executeStatement(
+            "with p as (insert into adhesion.paiement (payeur_id, encaisse_par, montant, moyen) values (:p, :o, 20, 'autre') returning id)
+             insert into adhesion.reglement (paiement_id, cotisation_id, montant) select id, :c, 20 from p", ['p' => $personne, 'o' => $prod, 'c' => $cotisation]);
+        $ae = $adh($e, '2012-01-01', '2014-12-31');
+        $af = $adh($f, '2013-01-01', '2016-12-31');
+        $payer($cot($ae, '2013-01-01'), $e);
+        $payer($cot($af, '2013-01-01'), $f);  // la même année, saisie deux fois
+        $payer($cot($af, '2015-01-01'), $f);
+        $this->envoyer('POST', '/api/personnes/'.$e.'/fusion', ['absorber' => $f], $admin);
+        self::assertResponseIsSuccessful();
+        $adhesions = $this->lire('/api/adhesions?membre='.$e, $admin);
+        self::assertSame([['2012-01-01', '2016-12-31']], array_map(fn ($x) => [substr($x['debut'], 0, 10), substr($x['fin'], 0, 10)], $adhesions));
+        $etat = $this->lire('/api/personnes/'.$e.'/cotisations', $admin);
+        self::assertSame([['2015-01-01', '20.00'], ['2013-01-01', '40.00']], array_map(fn ($c) => [$c['debut'], $c['regle']], $etat));
+
+        // Niveaux différents sur les mêmes dates : refusée, rien n'est changé.
         $d = $this->envoyer('POST', '/api/personnes', ['nom' => 'Meslier', 'prenom' => 'David'], $admin)['id'];
         $this->envoyer('POST', '/api/adhesions', ['membre' => '/api/personnes/'.$d, 'association' => '/api/organisations/'.$bearn,
             'categorie' => '/api/categories/suiveur', 'debut' => '2016-01-01'], $admin);
         $refus = $this->envoyer('POST', '/api/personnes/'.$a.'/fusion', ['absorber' => $d], $admin);
         self::assertResponseStatusCodeSame(422);
-        self::assertStringContainsString('se recouvrent', $refus['detail']);
+        self::assertStringContainsString('niveaux différents (Full patch et Suiveur)', $refus['detail']);
         $this->lire('/api/personnes/'.$d, $admin);
         self::assertResponseIsSuccessful();
     }

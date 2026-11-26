@@ -124,6 +124,7 @@ final class Doublons
                    commentaire = case when a.commentaire is null or a.commentaire = g.commentaire then g.commentaire
                                       else concat_ws(E'\\n', g.commentaire, a.commentaire) end
                  from annuaire.personne a where g.id = :g and a.id = :a", $params);
+            $this->fusionnerAdhesions($gardee, $absorbee);
             $this->deplacer('update adhesion.adhesion set membre_id = :g where membre_id = :a', $params,
                 'Les deux fiches ont des adhésions à la même association sur des dates qui se recouvrent : corrigez-les d\'abord.');
             $b->executeStatement('update annuaire.representation set personne_id = :g where personne_id = :a', $params);
@@ -153,6 +154,56 @@ final class Doublons
         } catch (\Throwable $e) {
             $b->rollBack();
             throw $e;
+        }
+    }
+
+    /**
+     * Une même adhésion saisie sur les deux fiches (même association, dates qui se recouvrent) :
+     * si le niveau est le même, les deux n'en font plus qu'une, de la première à la dernière date ;
+     * leurs cotisations la suivent, et une cotisation présente des deux côtés sur la même période
+     * n'est gardée qu'une fois, avec tous ses paiements.
+     */
+    private function fusionnerAdhesions(string $gardee, string $absorbee): void
+    {
+        $b = $this->base;
+        $paires = $b->fetchAllAssociative(
+            'select a1.id as garde, a2.id as absorbe, k1.libelle as niveau1, k2.libelle as niveau2, o.nom as association
+             from adhesion.adhesion a2
+             join adhesion.adhesion a1 on a1.membre_id = :g and a1.association_id = a2.association_id and a1.periode && a2.periode
+             join adhesion.categorie k1 on k1.code = a1.categorie
+             join adhesion.categorie k2 on k2.code = a2.categorie
+             join annuaire.organisation o on o.id = a1.association_id
+             where a2.membre_id = :a',
+            ['g' => $gardee, 'a' => $absorbee]);
+        foreach ($paires as $p) {
+            if ($p['niveau1'] !== $p['niveau2']) {
+                throw new \DomainException(sprintf('À %s, les deux fiches ont des adhésions de niveaux différents (%s et %s) sur des dates qui se recouvrent : corrigez-les d\'abord.',
+                    $p['association'], $p['niveau1'], $p['niveau2']));
+            }
+            $ids = ['garde' => $p['garde'], 'absorbe' => $p['absorbe']];
+            $this->deplacer('update adhesion.adhesion a1 set periode = range_merge(a1.periode, a2.periode)
+                 from adhesion.adhesion a2 where a1.id = :garde and a2.id = :absorbe', $ids,
+                sprintf('À %s, réunir les deux adhésions en recouvrirait une autre : corrigez les dates d\'abord.', $p['association']));
+            foreach ($b->fetchAllAssociative('select id, periode::text as periode from adhesion.cotisation where adhesion_id = :absorbe', $ids) as $c) {
+                $jumelle = $b->fetchAssociative(
+                    'select id, periode = cast(:periode as daterange) as identique from adhesion.cotisation
+                     where adhesion_id = :garde and periode && cast(:periode as daterange) limit 1',
+                    ['garde' => $p['garde'], 'periode' => $c['periode']]);
+                if (!$jumelle) {
+                    $b->executeStatement('update adhesion.cotisation set adhesion_id = :garde where id = :c', ['garde' => $p['garde'], 'c' => $c['id']]);
+                    continue;
+                }
+                if (!$jumelle['identique']) {
+                    throw new \DomainException(sprintf('À %s, les deux fiches ont des cotisations qui se chevauchent sans couvrir la même période : corrigez-les d\'abord.', $p['association']));
+                }
+                // Même période : une seule cotisation, qui reçoit les paiements de l'autre.
+                $b->executeStatement(
+                    'update adhesion.reglement r set cotisation_id = :j where r.cotisation_id = :c
+                       and not exists (select 1 from adhesion.reglement x where x.cotisation_id = :j and x.paiement_id = r.paiement_id)',
+                    ['j' => $jumelle['id'], 'c' => $c['id']]);
+                $b->executeStatement('delete from adhesion.cotisation where id = :c', ['c' => $c['id']]);
+            }
+            $b->executeStatement('delete from adhesion.adhesion where id = :absorbe', ['absorbe' => $p['absorbe']]);
         }
     }
 
