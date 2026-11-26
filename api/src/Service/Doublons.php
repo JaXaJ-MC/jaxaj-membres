@@ -148,6 +148,10 @@ final class Doublons
                    select case when n.a = :a then n.b else n.a end as x from annuaire.non_doublon n where :a in (n.a, n.b)
                  ) autres where x <> :g
                  on conflict do nothing', $params);
+            // Reprise de la base Free (si elle a eu lieu) : les anciens identifiants suivent la fiche gardée.
+            if ($b->fetchOne("select to_regclass('reprise.free_membre') is not null")) {
+                $b->executeStatement('update reprise.free_membre set entite_id = :g where entite_id = :a', $params);
+            }
             try {
                 $b->executeStatement('delete from annuaire.entite where id = :a', $params);
             } catch (DriverException $e) {
@@ -155,7 +159,8 @@ final class Doublons
                 if ('23503' !== $e->getSQLState()) {
                     throw $e;
                 }
-                preg_match('/table "(?:[a-z_]+\.)?([a-z_]+)"/', $e->getMessage(), $m);
+                // « … violates foreign key constraint "x" on table "y" » : la table qui retient, c'est y.
+                preg_match('/on table "(?:[a-z_]+\.)?([a-z_]+)"/', $e->getMessage(), $m);
                 throw new \DomainException('compte' === ($m[1] ?? null)
                     ? 'La fiche à fusionner a un compte de connexion : rattachez-le d\'abord à la fiche gardée.'
                     : sprintf('La fiche à fusionner est encore utilisée (%s) : fusion impossible pour l\'instant.', $m[1] ?? 'référence inconnue'), 0, $e);
